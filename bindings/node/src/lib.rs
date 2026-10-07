@@ -204,4 +204,75 @@ impl SniplicEngine {
             Err(Error::new(Status::InvalidArg, "No active project".to_string()))
         }
     }
+
+    /// Splits a clip at a specific frame.
+    #[napi]
+    pub async fn split_clip(&self, clip_id: String, split_frame: u32) -> Result<()> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            sniplic_core::core::timeline::TimelineEngine::split_clip(
+                proj,
+                &clip_id,
+                split_frame as u64,
+            ).map_err(|e| Error::new(Status::GenericFailure, format!("SplitClip failed: {}", e)))?;
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Trims a clip's edge ('left' or 'right') to a specific target frame.
+    #[napi]
+    pub async fn trim_clip(&self, clip_id: String, edge: String, target_frame: u32, push: bool, snap: bool, gapless: bool) -> Result<()> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            sniplic_core::core::timeline::TimelineEngine::trim_clip(
+                proj,
+                &clip_id,
+                &edge,
+                target_frame as u64,
+                push,
+                snap,
+                gapless,
+            ).map_err(|e| Error::new(Status::GenericFailure, format!("TrimClip failed: {}", e)))?;
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Moves a clip to a new start frame or a different track.
+    #[napi]
+    pub async fn move_clip(&self, clip_id: String, target_track_id: String, new_start: u32, push: bool, gapless: bool) -> Result<()> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            sniplic_core::core::timeline::TimelineEngine::move_clip(
+                proj,
+                &clip_id,
+                &target_track_id,
+                new_start as u64,
+                push,
+                gapless,
+            ).map_err(|e| Error::new(Status::GenericFailure, format!("MoveClip failed: {}", e)))?;
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Removes a clip from the timeline.
+    #[napi]
+    pub async fn remove_clip(&self, clip_id: String, gapless: bool) -> Result<()> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            sniplic_core::core::timeline::TimelineEngine::remove_clip(
+                proj,
+                &clip_id,
+                gapless,
+            ).map_err(|e| Error::new(Status::GenericFailure, format!("RemoveClip failed: {}", e)))?;
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
 }
