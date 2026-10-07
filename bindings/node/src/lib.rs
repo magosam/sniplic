@@ -5,7 +5,6 @@ extern crate napi_derive;
 
 use napi::bindgen_prelude::*;
 use napi::threadsafe_function::{ThreadsafeFunction, ErrorStrategy, ThreadsafeFunctionCallMode};
-use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -46,6 +45,21 @@ impl SniplicEngine {
             let mut u_lock = self.undo_stack.write().await;
             u_lock.push(json);
             self.redo_stack.write().await.clear();
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Sets the global project resolution and framerate (e.g. 1080x1920 for Reels/TikTok, 1080x1080 for Instagram).
+    #[napi]
+    pub async fn set_project_config(&self, width: u32, height: u32, fps: f64) -> Result<()> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            proj.config.width = width;
+            proj.config.height = height;
+            proj.config.fps = fps;
+            proj.bump_revision();
             Ok(())
         } else {
             Err(Error::new(Status::InvalidArg, "No active project".to_string()))
