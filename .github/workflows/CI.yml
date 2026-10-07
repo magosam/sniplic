@@ -84,7 +84,7 @@ jobs:
         working-directory: bindings/node
         continue-on-error: true
       - name: Publish to NPM
-        run: npm publish --access public
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
+          npm publish --access public
         working-directory: bindings/node
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
