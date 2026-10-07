@@ -1,0 +1,90 @@
+name: CI
+
+env:
+  DEBUG: napi:*
+  APP_NAME: sniplic
+  MACOSX_DEPLOYMENT_TARGET: '10.13'
+
+on:
+  push:
+    branches:
+      - main
+    tags-ignore:
+      - '**'
+    paths-ignore:
+      - '**/*.md'
+      - LICENSE
+      - '**/*.gitignore'
+      - '.editorconfig'
+      - docs/**
+  pull_request: null
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: macos-latest
+            target: x86_64-apple-darwin
+            build: npm run build
+          - host: windows-latest
+            build: npm run build
+            target: x86_64-pc-windows-msvc
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            build: npm run build
+    name: stable - ${{ matrix.settings.target }} - node@20
+    runs-on: ${{ matrix.settings.host }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.settings.target }}
+      - name: Install dependencies
+        run: npm install
+        working-directory: bindings/node
+      - name: Build
+        run: ${{ matrix.settings.build }}
+        working-directory: bindings/node
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.settings.target }}
+          path: bindings/node/*.node
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install dependencies
+        run: npm install
+        working-directory: bindings/node
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bindings/node/artifacts
+      - name: Move artifacts
+        run: npm run artifacts
+        working-directory: bindings/node
+        continue-on-error: true
+      - name: Publish to NPM
+        run: npm publish --access public
+        working-directory: bindings/node
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
