@@ -87,7 +87,7 @@ For absolute maximum performance and system-level integration.
 ### Installation
 ```toml
 [dependencies]
-sniplic-core = { git = "https://github.com/sam44cordeiro/sniplic.git", branch = "main" }
+sniplic-core = { git = "https://github.com/magosam/sniplic.git", branch = "main" }
 ```
 
 ### Usage
