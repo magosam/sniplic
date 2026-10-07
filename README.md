@@ -10,7 +10,7 @@
 
 <br/>
 
-## 📖 The "Why"
+## The "Why"
 Building video editors, automated rendering pipelines, or timeline-based media applications is incredibly hard. Managing timeline state, audio/video synchronization, caching heuristics, and FFmpeg pipelines usually results in deeply coupled, hard-to-maintain code.
 
 After building a full-fledged video editor from scratch, I decided to decouple the **entire engine** and open-source it. **Sniplic Core** extracts all the heavy lifting into a pure, predictable, and memory-safe Rust library, exposing a beautiful API for both Systems Programming (Rust) and the Web Ecosystem (Node.js/TypeScript).
@@ -19,17 +19,17 @@ Whether you are building the next web-based video editor, an automated TikTok/Sh
 
 ---
 
-## ✨ Features
+## Features
 
-- ⏱️ **Frame-Accurate Playback Engine:** Strict hardware-clock synchronization using Tokio to eliminate jitter, drift, and ensure precise NLE timeline scrubbing.
-- 🎞️ **Rich NLE Timeline Model:** Advanced abstractions for Tracks, Clips, Media Pools, Gapless execution, Ripple edits, and Trimming.
-- 🤖 **Local AI Subtitling:** Built-in ONNX Runtime bindings optimized for Parakeet TDT to perform blazing-fast, offline audio transcription and word-level timestamp generation.
-- 🚀 **Zero-Cost Node.js Bindings:** Seamless integration with V8 via **NAPI-RS**. Control the Rust engine directly from TypeScript with full autocomplete and native performance.
-- 📦 **Agnostic & Headless:** 100% decoupled from any UI framework (Tauri, Electron, React). It runs anywhere Rust runs.
+- **Frame-Accurate Playback Engine:** Strict hardware-clock synchronization using Tokio to eliminate jitter, drift, and ensure precise NLE timeline scrubbing.
+- **Rich NLE Timeline Model:** Advanced abstractions for Tracks, Clips, Media Pools, Gapless execution, Ripple edits, and Trimming.
+- **Local AI Subtitling:** Built-in ONNX Runtime bindings optimized for Parakeet TDT to perform blazing-fast, offline audio transcription and word-level timestamp generation.
+- **Zero-Cost Node.js Bindings:** Seamless integration with V8 via **NAPI-RS**. Control the Rust engine directly from TypeScript with full autocomplete and native performance.
+- **Agnostic & Headless:** 100% decoupled from any UI framework (Tauri, Electron, React). It runs anywhere Rust runs.
 
 ---
 
-## 🏗️ Architecture Layers
+## Architecture Layers
 
 Sniplic is organized as a Cargo Workspace with two main layers:
 1. `sniplic-core`: The pure Rust library.
@@ -37,7 +37,7 @@ Sniplic is organized as a Cargo Workspace with two main layers:
 
 ---
 
-## 💻 Getting Started (Node.js / TypeScript)
+## Getting Started (Node.js / TypeScript)
 
 The fastest way to use Sniplic is via the native Node.js bindings. Ideal for backend automation or Electron/Web-based editors.
 
@@ -66,7 +66,7 @@ engine.saveProject("./project_metadata.json");
 
 ---
 
-## 🦀 Getting Started (Rust)
+## Getting Started (Rust)
 
 For maximum performance and system-level integration, use the core library directly.
 
@@ -97,7 +97,7 @@ async fn main() {
 
 ---
 
-## 🤝 Contributing
+## Contributing
 This engine is a labor of love and a gift to the open-source community. If you are passionate about Video Engineering, FFmpeg, Rust, or AI, your pull requests are highly welcome! 
 
 Areas looking for contributors:
@@ -105,5 +105,5 @@ Areas looking for contributors:
 - WebAssembly (WASM) bindings support.
 - Advanced FFmpeg hardware acceleration configurations.
 
-## 📄 License
+## License
 This project is licensed under the MIT License - see the LICENSE file for details.
