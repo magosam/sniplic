@@ -51,6 +51,21 @@ pub fn build_audio_filter_complex(
             }
             chain.push("aresample=48000:async=1".to_string());
             chain.push(format!("adelay={}|{}", start_ms, start_ms));
+            
+            // Audio Noise Reduction (Denoise)
+            if item.denoise > 0.0 {
+                let nf = -10.0 - (item.denoise * 0.4); // Maps 0-100 to -10 to -50dB
+                chain.push(format!("afftdn=nf={:.1}", nf));
+            }
+            
+            // Audio Equalizer (Bass/Mid/Treble)
+            if item.eq_bass != 0.0 || item.eq_mid != 0.0 || item.eq_treble != 0.0 {
+                let bass = item.eq_bass;
+                let mid = item.eq_mid;
+                let treble = item.eq_treble;
+                chain.push(format!("anequalizer=c0 f=200 w=100 g={:.1}|c0 f=1000 w=500 g={:.1}|c0 f=8000 w=2000 g={:.1}|c1 f=200 w=100 g={:.1}|c1 f=1000 w=500 g={:.1}|c1 f=8000 w=2000 g={:.1}", bass, mid, treble, bass, mid, treble));
+            }
+
             chain.push(format!("volume={:.2}", item.volume));
 
             filter_str.push_str(&format!(

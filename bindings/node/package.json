@@ -1,6 +1,6 @@
 {
   "name": "sniplic",
-  "version": "0.2.358",
+  "version": "0.2.359",
   "description": "NLE Video Engine powered by Rust",
   "main": "index.js",
   "types": "index.d.ts",

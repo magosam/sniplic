@@ -186,6 +186,10 @@ pub struct AudioRenderItem {
     pub fade_in_frames: u32,
     pub fade_out_frames: u32,
     pub speed: f64,
+    pub eq_bass: f32,
+    pub eq_mid: f32,
+    pub eq_treble: f32,
+    pub denoise: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

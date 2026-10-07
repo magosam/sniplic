@@ -544,6 +544,55 @@ impl SniplicEngine {
         }
     }
 
+    /// Sets advanced audio configurations: EQ, Denoise, Fades, Volume.
+    #[napi]
+    pub async fn apply_audio_plugin(&self, clip_id: String, audio_json: String) -> Result<()> {
+        let audio_data: serde_json::Value = serde_json::from_str(&audio_json)
+            .map_err(|e| Error::new(Status::InvalidArg, format!("Invalid Audio JSON: {}", e)))?;
+
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            let mut found = false;
+            for track in &mut proj.tracks {
+                for clip in &mut track.clips {
+                    if clip.id == clip_id {
+                        if let Some(v) = audio_data.get("volume").and_then(|v| v.as_f64()) {
+                            clip.audio.volume = v as f32;
+                        }
+                        if let Some(v) = audio_data.get("denoise").and_then(|v| v.as_f64()) {
+                            clip.audio.denoise = v as f32;
+                        }
+                        if let Some(v) = audio_data.get("eqBass").and_then(|v| v.as_f64()) {
+                            clip.audio.eq_bass = v as f32;
+                        }
+                        if let Some(v) = audio_data.get("eqMid").and_then(|v| v.as_f64()) {
+                            clip.audio.eq_mid = v as f32;
+                        }
+                        if let Some(v) = audio_data.get("eqTreble").and_then(|v| v.as_f64()) {
+                            clip.audio.eq_treble = v as f32;
+                        }
+                        if let Some(v) = audio_data.get("fadeInFrames").and_then(|v| v.as_u64()) {
+                            clip.audio.fade_in_frames = v as u32;
+                        }
+                        if let Some(v) = audio_data.get("fadeOutFrames").and_then(|v| v.as_u64()) {
+                            clip.audio.fade_out_frames = v as u32;
+                        }
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if found {
+                proj.bump_revision();
+                Ok(())
+            } else {
+                Err(Error::new(Status::InvalidArg, "Clip not found".to_string()))
+            }
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
     /// Sets the transform plugin data (JSON) of a clip.
     #[napi]
     pub async fn set_clip_transform(&self, clip_id: String, transform_json: String) -> Result<()> {

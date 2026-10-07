@@ -146,6 +146,10 @@ impl ExportEngine {
                                         fade_in_frames: child.audio.fade_in_frames,
                                         fade_out_frames: child.audio.fade_out_frames,
                                         speed: child.speed.unwrap_or(1.0),
+                                        eq_bass: child.audio.eq_bass,
+                                        eq_mid: child.audio.eq_mid,
+                                        eq_treble: child.audio.eq_treble,
+                                        denoise: child.audio.denoise,
                                     });
                                 }
                             }
@@ -183,6 +187,10 @@ impl ExportEngine {
                             fade_in_frames: clip.audio.fade_in_frames,
                             fade_out_frames: clip.audio.fade_out_frames,
                             speed: clip.speed.unwrap_or(1.0),
+                            eq_bass: clip.audio.eq_bass,
+                            eq_mid: clip.audio.eq_mid,
+                            eq_treble: clip.audio.eq_treble,
+                            denoise: clip.audio.denoise,
                         });
                     }
                 }

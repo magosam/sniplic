@@ -54,6 +54,14 @@ pub struct AudioSettings {
     pub fade_in_frames: u32,
     #[serde(default)]
     pub fade_out_frames: u32,
+    #[serde(default)]
+    pub eq_bass: f32,
+    #[serde(default)]
+    pub eq_mid: f32,
+    #[serde(default)]
+    pub eq_treble: f32,
+    #[serde(default)]
+    pub denoise: f32,
     #[serde(default, rename = "processedAudioPath", alias = "processed_audio_path", skip_serializing_if = "Option::is_none")]
     pub processed_audio_path: Option<String>,
 }
@@ -67,6 +75,10 @@ impl Default for AudioSettings {
             fade_in_frames: 0,
             fade_out_frames: 0,
             processed_audio_path: None,
+            eq_bass: 0.0,
+            eq_mid: 0.0,
+            eq_treble: 0.0,
+            denoise: 0.0,
         }
     }
 }
