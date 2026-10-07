@@ -140,9 +140,68 @@ impl SniplicEngine {
 
     /// Exports the current timeline to a video file.
     #[napi]
-    pub async fn export_video(&self, _output_path: String) -> Result<()> {
-        // Implementation delegates to:
-        // sniplic_core::ffmpeg::export::video::runner
-        Ok(())
+    pub async fn export_video(&self, output_path: String) -> Result<()> {
+        let lock = self.project.read().await;
+        if let Some(proj) = lock.as_ref() {
+            let settings = sniplic_core::ffmpeg::export::types::ExportSettings {
+                name: "node_export".into(),
+                output_path: output_path.clone(),
+                include_video: true,
+                resolution: "1920x1080".into(), // Could be parameterized in future
+                codec: "h264".into(),
+                format: "mp4".into(),
+                fps: 30.0,
+                include_audio: true,
+                audio_codec: "aac".into(),
+                audio_format: "mp3".into(),
+                audio_bitrate_kbps: 192,
+                subtitles: None,
+                subtitle_config: None,
+                preview_width: None,
+                preview_height: None,
+            };
+
+            let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            
+            // Note: Since this block blocks the async task if not spawned on a blocking thread,
+            // we use tokio::task::spawn_blocking. We must clone necessary data.
+            let proj_clone = proj.clone();
+            
+            tokio::task::spawn_blocking(move || {
+                sniplic_core::ffmpeg::export::ExportEngine::render_project(
+                    &proj_clone,
+                    &settings,
+                    None, // Optional progress callback
+                    cancel_flag,
+                    None,
+                )
+            })
+            .await
+            .map_err(|e| Error::new(Status::GenericFailure, format!("JoinError: {}", e)))?
+            .map_err(|e| Error::new(Status::GenericFailure, format!("Export failed: {}", e)))?;
+
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Adds a clip to the timeline.
+    #[napi]
+    pub async fn add_clip(&self, track_id: String, media_id: String, start_frame: u32) -> Result<()> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            sniplic_core::core::timeline::TimelineEngine::add_clip(
+                proj,
+                &track_id,
+                &media_id,
+                start_frame as u64,
+                false, // Push
+                None, // Image duration
+            ).map_err(|e| Error::new(Status::GenericFailure, format!("AddClip failed: {}", e)))?;
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
     }
 }

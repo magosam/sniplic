@@ -57,7 +57,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.settings.target }}
-          path: bindings/node/*.node
+          path: |
+            bindings/node/*.node
+            bindings/node/index.js
+            bindings/node/index.d.ts
           if-no-files-found: error
 
   publish:
@@ -80,9 +83,11 @@ jobs:
         with:
           path: bindings/node/artifacts
       - name: Move artifacts
-        run: npm run artifacts
+        run: |
+          cp -r artifacts/*/*.node . || true
+          cp -r artifacts/*/index.js . || true
+          cp -r artifacts/*/index.d.ts . || true
         working-directory: bindings/node
-        continue-on-error: true
       - name: Publish to NPM
         run: |
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
