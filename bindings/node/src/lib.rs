@@ -18,6 +18,8 @@ use sniplic_core::playback::engine::{PlaybackEngine, PlaybackTickEvent};
 pub struct SniplicEngine {
     project: SharedProjectState,
     playback: Arc<PlaybackEngine>,
+    undo_stack: Arc<RwLock<Vec<String>>>,
+    redo_stack: Arc<RwLock<Vec<String>>>,
 }
 
 #[napi]
@@ -29,6 +31,72 @@ impl SniplicEngine {
         Self { 
             project: Arc::new(RwLock::new(Some(project))),
             playback: Arc::new(PlaybackEngine::new()),
+            undo_stack: Arc::new(RwLock::new(Vec::new())),
+            redo_stack: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    /// Saves the current project state to the undo stack.
+    #[napi]
+    pub async fn snapshot_history(&self) -> Result<()> {
+        let lock = self.project.read().await;
+        if let Some(proj) = lock.as_ref() {
+            let json = serde_json::to_string(proj)
+                .map_err(|e| Error::new(Status::GenericFailure, format!("Serialization error: {}", e)))?;
+            let mut u_lock = self.undo_stack.write().await;
+            u_lock.push(json);
+            self.redo_stack.write().await.clear();
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Reverts the project to the last saved state in the undo stack.
+    #[napi]
+    pub async fn undo(&self) -> Result<bool> {
+        let mut u_lock = self.undo_stack.write().await;
+        if let Some(last_json) = u_lock.pop() {
+            let mut lock = self.project.write().await;
+            if let Some(proj) = lock.as_mut() {
+                // save current to redo
+                let current = serde_json::to_string(proj)
+                    .map_err(|e| Error::new(Status::GenericFailure, format!("Serialization error: {}", e)))?;
+                self.redo_stack.write().await.push(current);
+                
+                // restore from last_json
+                *proj = serde_json::from_str(&last_json)
+                    .map_err(|e| Error::new(Status::GenericFailure, format!("Deserialization error: {}", e)))?;
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Reapplies a previously undone state.
+    #[napi]
+    pub async fn redo(&self) -> Result<bool> {
+        let mut r_lock = self.redo_stack.write().await;
+        if let Some(next_json) = r_lock.pop() {
+            let mut lock = self.project.write().await;
+            if let Some(proj) = lock.as_mut() {
+                // save current to undo
+                let current = serde_json::to_string(proj)
+                    .map_err(|e| Error::new(Status::GenericFailure, format!("Serialization error: {}", e)))?;
+                self.undo_stack.write().await.push(current);
+                
+                // restore from next_json
+                *proj = serde_json::from_str(&next_json)
+                    .map_err(|e| Error::new(Status::GenericFailure, format!("Deserialization error: {}", e)))?;
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        } else {
+            Ok(false)
         }
     }
 
@@ -237,52 +305,83 @@ impl SniplicEngine {
     // EXPORT & FFMPEG
     // ==========================================
 
-    /// Exports the current timeline to a video file.
-    #[napi]
-    pub async fn export_video(&self, output_path: String) -> Result<()> {
-        let lock = self.project.read().await;
-        if let Some(proj) = lock.as_ref() {
-            let settings = sniplic_core::ffmpeg::export::types::ExportSettings {
-                name: "node_export".into(),
-                output_path: output_path.clone(),
-                include_video: true,
-                resolution: "1920x1080".into(), // Could be parameterized in future
-                codec: "h264".into(),
-                format: "mp4".into(),
-                fps: 30.0,
-                include_audio: true,
-                audio_codec: "aac".into(),
-                audio_format: "mp3".into(),
-                audio_bitrate_kbps: 192,
-                subtitles: None,
-                subtitle_config: None,
-                preview_width: None,
-                preview_height: None,
-            };
+    /// Exports the current timeline to a video file with full configuration and progress reporting.
+    /// This method returns immediately. The provided callback is called with progress updates, and finally with stage="done" or "error".
+    #[napi(ts_args_type = "settings_json: string, on_progress: (err: null | Error, result: any) => void")]
+    pub fn export_project(
+        &self,
+        settings_json: String,
+        on_progress: JsFunction,
+    ) -> Result<()> {
+        let settings: sniplic_core::ffmpeg::export::types::ExportSettings = serde_json::from_str(&settings_json)
+            .map_err(|e| Error::new(Status::InvalidArg, format!("Invalid Settings JSON: {}", e)))?;
 
-            let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            
-            // Note: Since this block blocks the async task if not spawned on a blocking thread,
-            // we use tokio::task::spawn_blocking. We must clone necessary data.
-            let proj_clone = proj.clone();
-            
-            tokio::task::spawn_blocking(move || {
+        let tsfn: ThreadsafeFunction<sniplic_core::ffmpeg::export::types::ExportProgressUpdate, ErrorStrategy::Fatal> = on_progress
+            .create_threadsafe_function(0, |ctx: napi::threadsafe_function::ThreadSafeCallContext<sniplic_core::ffmpeg::export::types::ExportProgressUpdate>| {
+                let mut obj = ctx.env.create_object()?;
+                obj.set("percentage", ctx.value.percentage)?;
+                obj.set("stage", ctx.value.stage)?;
+                obj.set("message", ctx.value.message)?;
+                Ok(vec![obj])
+            })?;
+
+        let proj_clone = {
+            let lock = self.project.blocking_read();
+            if let Some(proj) = lock.as_ref() {
+                proj.clone()
+            } else {
+                return Err(Error::new(Status::InvalidArg, "No active project".to_string()));
+            }
+        };
+
+        let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        
+        tokio::spawn(async move {
+            let cb = Arc::new(move |prog: sniplic_core::ffmpeg::export::types::ExportProgressUpdate| {
+                tsfn.call(prog, napi::threadsafe_function::ThreadsafeFunctionCallMode::NonBlocking);
+            });
+
+            let cb_clone = cb.clone();
+            let res = tokio::task::spawn_blocking(move || {
                 sniplic_core::ffmpeg::export::ExportEngine::render_project(
                     &proj_clone,
                     &settings,
-                    None, // Optional progress callback
+                    Some(cb_clone),
                     cancel_flag,
                     None,
                 )
-            })
-            .await
-            .map_err(|e| Error::new(Status::GenericFailure, format!("JoinError: {}", e)))?
-            .map_err(|e| Error::new(Status::GenericFailure, format!("Export failed: {}", e)))?;
+            }).await;
 
-            Ok(())
-        } else {
-            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
-        }
+            let final_msg = match res {
+                Ok(Ok(_)) => sniplic_core::ffmpeg::export::types::ExportProgressUpdate {
+                    percentage: 100.0,
+                    stage: "done".to_string(),
+                    message: "Export completed successfully".to_string(),
+                    fps: None,
+                    speed: None,
+                    frame: None,
+                },
+                Ok(Err(e)) => sniplic_core::ffmpeg::export::types::ExportProgressUpdate {
+                    percentage: 0.0,
+                    stage: "error".to_string(),
+                    message: format!("Export failed: {}", e),
+                    fps: None,
+                    speed: None,
+                    frame: None,
+                },
+                Err(e) => sniplic_core::ffmpeg::export::types::ExportProgressUpdate {
+                    percentage: 0.0,
+                    stage: "error".to_string(),
+                    message: format!("JoinError: {}", e),
+                    fps: None,
+                    speed: None,
+                    frame: None,
+                },
+            };
+            cb(final_msg);
+        });
+
+        Ok(())
     }
 
     /// Adds a clip to the timeline.
