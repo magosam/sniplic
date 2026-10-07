@@ -1,0 +1,22 @@
+[package]
+name = "sniplic-node"
+version = "0.2.351"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# NAPI-RS permite a comunicação C FFI com o V8 (Node.js)
+napi = { version = "2.16.4", default-features = false, features = ["napi4", "tokio_rt", "async"] }
+napi-derive = "2.16.4"
+
+# Importa o seu motor de vídeo recém limpo
+sniplic-core = { path = "../.." }
+
+# Dependências auxiliares
+tokio = { version = "1.37", features = ["full"] }
+serde_json = "1.0"
+
+[build-dependencies]
+napi-build = "2.1.3"
