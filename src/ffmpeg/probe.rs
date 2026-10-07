@@ -394,7 +394,7 @@ pub fn probe_file<P: AsRef<Path>>(file_path: P, target_fps: f64) -> AppResult<Pr
                 let timeline_frames = (dur_secs * target_fps).round() as u64;
 
                 return Ok(ProbeResult {
-                    media_type,
+                    media_type: if is_audio { MediaType::Audio } else { media_type },
                     duration_seconds: dur_secs,
                     duration_frames: timeline_frames,
                     width,
