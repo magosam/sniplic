@@ -664,6 +664,36 @@ impl SniplicEngine {
         }
     }
 
+    /// Sets the transition plugin data (JSON) of a clip (applied between the previous clip and this one).
+    #[napi]
+    pub async fn set_clip_transition(&self, clip_id: String, transition_json: String) -> Result<()> {
+        let transition_data: serde_json::Value = serde_json::from_str(&transition_json)
+            .map_err(|e| Error::new(Status::InvalidArg, format!("Invalid Transition JSON: {}", e)))?;
+
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            let mut found = false;
+            for track in &mut proj.tracks {
+                for clip in &mut track.clips {
+                    if clip.id == clip_id {
+                        clip.transition_plugin_data = Some(transition_data.clone());
+                        clip.plugins.insert("transition".to_string(), transition_data.clone());
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if found {
+                proj.bump_revision();
+                Ok(())
+            } else {
+                Err(Error::new(Status::InvalidArg, "Clip not found".to_string()))
+            }
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
     /// Compacts main tracks (V1 and A1) to eliminate gaps.
     #[napi]
     pub async fn compact_main_tracks(&self) -> Result<()> {
