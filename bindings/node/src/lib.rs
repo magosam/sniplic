@@ -489,6 +489,22 @@ impl SniplicEngine {
         }
     }
 
+    /// Adds a special FX Filter track to the timeline (Adjustment Layer).
+    #[napi]
+    pub async fn add_filter_track(&self, near_track_id: Option<String>) -> Result<String> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            let track = sniplic_core::core::timeline::effect_tracks::EffectTrackOperations::add_filter_track(
+                proj,
+                near_track_id.as_deref(),
+            ).map_err(|e| Error::new(Status::GenericFailure, format!("AddFilterTrack failed: {}", e)))?;
+            
+            Ok(track.id)
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
     /// Removes a track from the timeline.
     #[napi]
     pub async fn remove_track(&self, track_id: String) -> Result<()> {
@@ -541,6 +557,97 @@ impl SniplicEngine {
                 for clip in &mut track.clips {
                     if clip.id == clip_id {
                         clip.transform_plugin_data = Some(transform_data.clone());
+                        clip.plugins.insert("transform".to_string(), transform_data.clone());
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if found {
+                proj.bump_revision();
+                Ok(())
+            } else {
+                Err(Error::new(Status::InvalidArg, "Clip not found".to_string()))
+            }
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Sets the filter plugin data (JSON) of a clip (LUTs, Blur, etc).
+    #[napi]
+    pub async fn set_clip_filter(&self, clip_id: String, filter_json: String) -> Result<()> {
+        let filter_data: serde_json::Value = serde_json::from_str(&filter_json)
+            .map_err(|e| Error::new(Status::InvalidArg, format!("Invalid Filter JSON: {}", e)))?;
+
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            let mut found = false;
+            for track in &mut proj.tracks {
+                for clip in &mut track.clips {
+                    if clip.id == clip_id {
+                        clip.filter_plugin_data = Some(filter_data.clone());
+                        clip.plugins.insert("filter".to_string(), filter_data.clone());
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if found {
+                proj.bump_revision();
+                Ok(())
+            } else {
+                Err(Error::new(Status::InvalidArg, "Clip not found".to_string()))
+            }
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Sets the effect plugin data (JSON) of a clip (Glitch, Shake, etc).
+    #[napi]
+    pub async fn set_clip_effect(&self, clip_id: String, effect_json: String) -> Result<()> {
+        let effect_data: serde_json::Value = serde_json::from_str(&effect_json)
+            .map_err(|e| Error::new(Status::InvalidArg, format!("Invalid Effect JSON: {}", e)))?;
+
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            let mut found = false;
+            for track in &mut proj.tracks {
+                for clip in &mut track.clips {
+                    if clip.id == clip_id {
+                        clip.effect_plugin_data = Some(effect_data.clone());
+                        clip.plugins.insert("effect".to_string(), effect_data.clone());
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if found {
+                proj.bump_revision();
+                Ok(())
+            } else {
+                Err(Error::new(Status::InvalidArg, "Clip not found".to_string()))
+            }
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Sets the color adjustments data (JSON) of a clip (Brightness, Contrast, etc).
+    #[napi]
+    pub async fn set_clip_adjustments(&self, clip_id: String, adjustments_json: String) -> Result<()> {
+        let adj_data: serde_json::Value = serde_json::from_str(&adjustments_json)
+            .map_err(|e| Error::new(Status::InvalidArg, format!("Invalid Adjustments JSON: {}", e)))?;
+
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            let mut found = false;
+            for track in &mut proj.tracks {
+                for clip in &mut track.clips {
+                    if clip.id == clip_id {
+                        clip.adjustments_plugin_data = Some(adj_data.clone());
+                        clip.plugins.insert("adjustments".to_string(), adj_data.clone());
                         found = true;
                         break;
                     }
