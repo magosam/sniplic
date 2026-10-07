@@ -5,7 +5,7 @@
   [![Version](https://img.shields.io/badge/version-0.2.363-blue.svg)]()
   [![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://www.rust-lang.org)
   [![Node.js](https://img.shields.io/badge/Node.js-NAPI--RS-green.svg)](https://nodejs.org)
-  [![License](https://img.shields.io/badge/license-MIT-purple.svg)]()
+  [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-purple.svg)]()
 </div>
 
 <br/>
@@ -109,4 +109,5 @@ async fn main() {
 ```
 
 ## License
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is dual-licensed under either the MIT License or the Apache License, Version 2.0.
+See the `LICENSE-MIT` and `LICENSE-APACHE` files for details.
