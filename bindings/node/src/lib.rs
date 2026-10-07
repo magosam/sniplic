@@ -125,13 +125,112 @@ impl SniplicEngine {
     // AI & SUBTITLES
     // ==========================================
 
-    /// Triggers the Parakeet ONNX Engine to generate subtitles from an audio file.
+    /// Generates subtitles from a 16kHz WAV file using the local Parakeet AI model.
+    /// Returns a JSON string containing the timed words/clauses.
     #[napi]
-    pub async fn generate_subtitles(&self, _media_id: String) -> Result<String> {
-        // Implementation delegates to:
-        // sniplic_core::core::subtitles::parakeet_engine
-        // Here we stub the high-level call since the parakeet engine might require specific paths
-        Ok("Subtitles generated successfully.".to_string())
+    pub async fn generate_subtitles(&self, wav_path: String, language: String, style: String, max_chars: u32) -> Result<String> {
+        let result = tokio::task::spawn_blocking(move || {
+            sniplic_core::core::subtitles::parakeet_engine::transcribe_parakeet(
+                std::path::Path::new(&wav_path),
+                &language,
+                &style,
+                Some(max_chars),
+            )
+        })
+        .await
+        .map_err(|e| Error::new(Status::GenericFailure, format!("JoinError: {}", e)))?
+        .map_err(|e| Error::new(Status::GenericFailure, format!("AI Transcription failed: {}", e)))?;
+
+        let json = serde_json::to_string(&result)
+            .map_err(|e| Error::new(Status::GenericFailure, format!("JSON Error: {}", e)))?;
+        Ok(json)
+    }
+
+    /// Appends subtitle data (JSON array of SubtitleChunk) directly to the project.
+    #[napi]
+    pub async fn set_project_subtitles(&self, subtitles_json: String) -> Result<()> {
+        let items: Vec<sniplic_core::core::project::subtitles::SubtitleBlock> = serde_json::from_str(&subtitles_json)
+            .map_err(|e| Error::new(Status::InvalidArg, format!("Invalid Subtitle JSON: {}", e)))?;
+        
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            if let Some(subs) = &mut proj.subtitles {
+                subs.items = items;
+            } else {
+                proj.subtitles = Some(sniplic_core::core::project::subtitles::ProjectSubtitles {
+                    items,
+                    ..Default::default()
+                });
+            }
+            proj.bump_revision();
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    // ==========================================
+    // ADVANCED TIMELINE & BATCH OPERATIONS
+    // ==========================================
+
+    /// Splits a clip at a specific frame and deletes the left or right side immediately.
+    #[napi]
+    pub async fn split_and_trim(&self, clip_id: String, split_frame: u32, is_left: bool, gapless: bool) -> Result<()> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            sniplic_core::core::timeline::TimelineEngine::split_and_trim(
+                proj,
+                &clip_id,
+                split_frame as u64,
+                is_left,
+                gapless
+            ).map_err(|e| Error::new(Status::GenericFailure, format!("SplitAndTrim failed: {}", e)))?;
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Splits the timeline precisely at the playhead across all or selected tracks.
+    #[napi]
+    pub async fn split_at_playhead(&self, split_frame: u32, split_all: bool, selected_clip_ids_json: String) -> Result<()> {
+        let selected_ids: Vec<String> = serde_json::from_str(&selected_clip_ids_json)
+            .unwrap_or_default();
+            
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            sniplic_core::core::timeline::TimelineEngine::split_at_playhead(
+                proj,
+                split_frame as u64,
+                split_all,
+                &selected_ids
+            ).map_err(|e| Error::new(Status::GenericFailure, format!("SplitAtPlayhead failed: {}", e)))?;
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Adds multiple clips to the timeline in one atomic operation.
+    #[napi]
+    pub async fn add_clips_batch(&self, media_ids_json: String, start_frame: u32, target_track_id: Option<String>, push: bool) -> Result<()> {
+        let media_ids: Vec<String> = serde_json::from_str(&media_ids_json)
+            .map_err(|_| Error::new(Status::InvalidArg, "Invalid media_ids JSON array".to_string()))?;
+            
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            sniplic_core::core::timeline::TimelineEngine::add_clips_batch(
+                proj,
+                &media_ids,
+                start_frame as u64,
+                target_track_id,
+                push,
+                None
+            ).map_err(|e| Error::new(Status::GenericFailure, format!("BatchAdd failed: {}", e)))?;
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
     }
 
     // ==========================================
