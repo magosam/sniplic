@@ -56,12 +56,12 @@ Ideal for Next.js servers, Electron apps, or Node CLI tools.
 
 ### Installation
 ```bash
-npm install sniplic-node
+npm install sniplic
 ```
 
 ### Usage
 ```typescript
-import { SniplicEngine } from 'sniplic-node';
+import { SniplicEngine } from 'sniplic';
 
 async function main() {
     const engine = new SniplicEngine("TikTok Generator");
