@@ -1,113 +1,97 @@
-﻿<div align="center">
+<div align="center">
+  <h1>Sniplic Core</h1>
+  <p><strong>A high-performance, headless Non-Linear Video Editing (NLE) engine.</strong></p>
 
-# 🎬 Sniplic Engine
-
-**The next-generation, headless Non-Linear Video Editing (NLE) engine.**  
-Built in Rust for absolute memory safety, blinding speed, and frame-accurate precision.
-
-[![Rust](https://img.shields.io/badge/Rust-1.70%2B-FA4E30?style=for-the-badge&logo=rust)](https://rust-lang.org)
-[![Node.js](https://img.shields.io/badge/Node.js-NAPI--RS-339933?style=for-the-badge&logo=node.js)](https://nodejs.org)
-[![FFmpeg](https://img.shields.io/badge/Powered_by-FFmpeg-007808?style=for-the-badge&logo=ffmpeg)]()
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)]()
-
-*Sniplic provides a unified, zero-overhead foundation for building desktop editors, web-based rendering pipelines, and automated social media generators.*
-
+  [![Version](https://img.shields.io/badge/version-0.2.363-blue.svg)]()
+  [![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://www.rust-lang.org)
+  [![Node.js](https://img.shields.io/badge/Node.js-NAPI--RS-green.svg)](https://nodejs.org)
+  [![License](https://img.shields.io/badge/license-MIT-purple.svg)]()
 </div>
 
----
+<br/>
 
-## ✨ Features
+## Overview
+Sniplic Core is a memory-safe video editing engine designed to power modern media applications. It abstracts timeline state management, audio/video synchronization, and FFmpeg pipeline generation into a predictable API. 
 
-- ⏱️ **Frame-Accurate Clock:** Uses a strict u64 frame-based timeline. Zero floating-point drift, pristine scrubbing, and hardware-synchronized Tokio playback.
-- 🧩 **Headless & Agnostic:** Runs anywhere. Build your UI in React, Vue, Tauri, Bevy, or use it as a silent backend worker for automated rendering.
-- 🎨 **Advanced Compositing:** Native support for CSS-like visual filters, affine transforms, 3D LUTs, and gapless/ripple timeline behaviors.
-- 🎛️ **Audio DSP & EQ:** Built-in Equalizers (Bass, Mid, Treble) and Noise Reduction powered by FFmpeg's fftdn and nequalizer.
-- 🤖 **Local AI Subtitles:** Deeply integrated ONNX Parakeet TDT for blazing-fast, offline audio transcription and word-level timestamp generation.
-- ⏪ **Native Undo/Redo:** In-memory transactional history stacks. Time-travel through your project states instantly without massive JSON overhead.
+Designed for both Systems Programming (Rust) and the Web Ecosystem (Node.js/TypeScript), it serves as the foundation for web-based video editors, automated rendering pipelines, and AI-driven media generators.
 
----
+## Architecture
+Sniplic is organized as a modular Cargo Workspace, isolating the intensive computation from the application's UI layer.
 
-## 🏗️ Architecture
-
-Sniplic is designed as a modular Cargo Workspace, cleanly separating the intensive Rust computation from your application's UI layer.
-
-\\\mermaid
+```mermaid
 graph TD
-    subgraph Frontend Ecosystem
+    subgraph Applications
         NODE[Node.js / TypeScript]
-        TAURI[Tauri / Rust Native]
+        NATIVE[Rust Native / Tauri]
     end
 
     subgraph Sniplic NLE Engine
         NAPI[NAPI-RS Bindings]
         CORE[Sniplic Core]
-        TL[Timeline State & Undo Stack]
-        DSP[Audio DSP & Parakeet AI]
+        TL[Timeline State]
+        DSP[Audio DSP]
         FFMPEG[FFmpeg Graph Builder]
     end
 
-    NODE -->|Calls| NAPI
+    NODE -->|FFI| NAPI
     NAPI --> CORE
-    TAURI -->|Native Calls| CORE
+    NATIVE -->|Direct| CORE
     
     CORE --> TL
     CORE --> DSP
     CORE --> FFMPEG
-    
-    FFMPEG -->|Renders| OUT[Final .mp4 / Proxy]
-\\\
+```
 
----
+## Core Features
+- **Frame-Accurate Clock**: Strict `u64` frame-based timeline and hardware-synchronized Tokio playback to eliminate floating-point drift.
+- **Agnostic & Headless**: 100% decoupled from UI frameworks. Runs as a background worker or binds directly to React, Vue, Tauri, etc.
+- **Advanced Compositing**: Native parsing for visual filters, affine transforms, 3D LUTs, gapless tracking, and ripple editing.
+- **Audio DSP Pipeline**: Built-in Equalization and Noise Reduction processing injected directly into the FFmpeg render graph.
+- **Local AI Subtitles**: Deep ONNX Runtime integration for offline audio transcription and word-level timestamp generation.
+- **Transactional Memory**: In-memory Undo/Redo history stacks for instant project state-switching without JSON overhead.
 
-## 🚀 Getting Started
+## Getting Started (Node.js / TypeScript)
 
-Sniplic can be consumed dynamically via Node.js or statically as a Rust crate. Choose your ecosystem below.
+Ideal for Next.js servers, Electron apps, or Node CLI tools.
 
-### 🟢 Node.js / TypeScript (NPM)
-Perfect for Next.js servers, Electron apps, or Node CLI tools.
-
-**Installation:**
-\\\ash
+### Installation
+```bash
 npm install sniplic-node
-\\\
+```
 
-**Quick Start:**
-\\\	ypescript
+### Usage
+```typescript
 import { SniplicEngine } from 'sniplic-node';
 
 async function main() {
-    // 1. Initialize Engine & Canvas
     const engine = new SniplicEngine("TikTok Generator");
-    await engine.setProjectConfig(1080, 1920, 60.0); // 9:16 Aspect Ratio
+    await engine.setProjectConfig(1080, 1920, 60.0);
 
-    // 2. Import & Build Timeline
     await engine.importMedia("./raw_footage.mp4");
     await engine.addClipsBatch(["med_1234"], 0, null, true, null);
 
-    // 3. Apply Filters & Transitions
     await engine.setClipTransition("clip_1234", "fade", JSON.stringify({ duration_frames: 30 }));
-    await engine.setClipFilter("clip_1234", JSON.stringify({ brightness: 1.1, contrast: 1.05 }));
-
-    // 4. Render with Real-Time Progress
+    
     const settings = { video_codec: "libx264", audio_codec: "aac", bitrate_kbps: 8000 };
     engine.exportProject(JSON.stringify(settings), (err, progress) => {
         if (err) throw err;
-        console.log(\[\]: \% \);
+        console.log(`[${progress.stage}]: ${progress.percentage.toFixed(1)}% `);
     });
 }
-\\\
+```
 
-### 🦀 Rust (Cargo)
-Perfect for native high-performance apps like Tauri or Bevy.
+## Getting Started (Rust)
 
-**Installation:**
-\\\	oml
+For absolute maximum performance and system-level integration.
+
+### Installation
+```toml
 [dependencies]
 sniplic-core = { git = "https://github.com/sam44cordeiro/sniplic.git", branch = "main" }
-\\\
+```
 
-**Quick Start:**
-\\\ust
+### Usage
+```rust
 use sniplic_core::core::project::Project;
 use sniplic_core::playback::engine::PlaybackEngine;
 
@@ -116,30 +100,13 @@ async fn main() {
     let mut project = Project::new("My Native NLE".into());
     let engine = PlaybackEngine::new();
 
-    // The engine streams tick events perfectly synchronized
     engine.set_on_frame_update(move |event| {
-        println!("Needle moved to frame: {} (Playing: {})", event.frame, event.is_playing);
+        println!("Frame: {} | Playing: {}", event.frame, event.is_playing);
     }).await;
 
     engine.play().await;
 }
-\\\
+```
 
----
-
-## 🤝 Contributing
-
-Sniplic is an open-source labor of love pushing the boundaries of video engineering. Contributions are welcome! 
-If you want to add new FFmpeg ilter_complex parsers, improve the WebAssembly (WASM) targets, or optimize the NAPI bridge, please open a PR.
-
-1. Fork the Project
-2. Create your Feature Branch (\git checkout -b feat/AmazingFeature\)
-3. Commit your Changes (\git commit -m 'feat: add some AmazingFeature'\)
-4. Push to the Branch (\git push origin feat/AmazingFeature\)
-5. Open a Pull Request
-
----
-
-<div align="center">
-  <p>Built with ❤️ by Sam Cordeiro and the Open Source Community.</p>
-</div>
+## License
+This project is licensed under the MIT License - see the LICENSE file for details.
