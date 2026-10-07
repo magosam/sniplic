@@ -167,13 +167,11 @@ impl SniplicEngine {
                 Ok(vec![obj])
             })?;
 
-        let mut rx = self.playback.subscribe();
-        
-        // Spawn a background listener that forwards Rust events to Node.js
+        let playback = self.playback.clone();
         tokio::spawn(async move {
-            while let Ok(event) = rx.recv().await {
+            playback.set_on_frame_update(move |event| {
                 tsfn.call(event, ThreadsafeFunctionCallMode::NonBlocking);
-            }
+            }).await;
         });
 
         Ok(())

@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
@@ -19,12 +19,11 @@ pub struct PlaybackEngine {
     task_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
     loop_range: Arc<Mutex<Option<(u64, u64)>>>,
     max_frame: Arc<AtomicU64>,
-    event_sender: broadcast::Sender<PlaybackTickEvent>,
+    on_frame_update: Arc<Mutex<Option<Arc<dyn Fn(PlaybackTickEvent) + Send + Sync>>>>,
 }
 
 impl PlaybackEngine {
     pub fn new() -> Self {
-        let (tx, _) = broadcast::channel(16);
         Self {
             is_playing: Arc::new(AtomicBool::new(false)),
             current_frame: Arc::new(AtomicU64::new(0)),
@@ -33,12 +32,23 @@ impl PlaybackEngine {
             task_handle: Arc::new(Mutex::new(None)),
             loop_range: Arc::new(Mutex::new(None)),
             max_frame: Arc::new(AtomicU64::new(0)),
-            event_sender: tx,
+            on_frame_update: Arc::new(Mutex::new(None)),
         }
     }
 
-    pub fn subscribe(&self) -> broadcast::Receiver<PlaybackTickEvent> {
-        self.event_sender.subscribe()
+    pub async fn set_on_frame_update<F>(&self, callback: F)
+    where
+        F: Fn(PlaybackTickEvent) + Send + Sync + 'static,
+    {
+        let mut guard = self.on_frame_update.lock().await;
+        *guard = Some(Arc::new(callback));
+    }
+
+    async fn emit_tick(&self, frame: u64, is_playing: bool) {
+        let guard = self.on_frame_update.lock().await;
+        if let Some(cb) = &*guard {
+            cb(PlaybackTickEvent { frame, is_playing });
+        }
     }
 
     pub fn is_playing(&self) -> bool {
@@ -105,7 +115,8 @@ impl PlaybackEngine {
         let loop_range_clone = self.loop_range.clone();
         let max_frame_clone = self.max_frame.clone();
         let fps_val = *self.fps.lock().await;
-        let event_sender_clone = self.event_sender.clone();
+
+        let on_frame_update_clone = self.on_frame_update.clone();
 
         let mut handle_guard = self.task_handle.lock().await;
         if let Some(old_handle) = handle_guard.take() {
@@ -118,7 +129,6 @@ impl PlaybackEngine {
             let mut frame_count: u64 = 0;
 
             while is_playing_clone.load(Ordering::SeqCst) {
-                // If a seek was requested, immediately re-anchor clock to target frame
                 if seek_requested_clone.swap(false, Ordering::SeqCst) {
                     start_frame = current_frame_clone.load(Ordering::SeqCst);
                     start_instant = std::time::Instant::now();
@@ -136,7 +146,6 @@ impl PlaybackEngine {
                     break;
                 }
 
-                // Check again if a seek occurred while sleeping
                 if seek_requested_clone.swap(false, Ordering::SeqCst) {
                     start_frame = current_frame_clone.load(Ordering::SeqCst);
                     start_instant = std::time::Instant::now();
@@ -144,7 +153,6 @@ impl PlaybackEngine {
                     continue;
                 }
 
-                // Strict synchronization with wall clock to eliminate drift and jitter
                 let elapsed = start_instant.elapsed().as_secs_f64();
                 let mut actual_frame = start_frame + (elapsed * fps_val).round() as u64;
 
@@ -164,32 +172,27 @@ impl PlaybackEngine {
                     if max_f > 0 && actual_frame >= max_f {
                         current_frame_clone.store(max_f, Ordering::SeqCst);
                         is_playing_clone.store(false, Ordering::SeqCst);
-                        let _ = event_sender_clone.send(
-                            PlaybackTickEvent {
-                                frame: max_f,
-                                is_playing: false,
-                            },
-                        );
-                        info!("PlaybackEngine: End of media reached (frame {}). Playback stopped by default.", max_f);
+                        
+                        let guard = on_frame_update_clone.lock().await;
+                        if let Some(cb) = &*guard {
+                            cb(PlaybackTickEvent { frame: max_f, is_playing: false });
+                        }
+                        
+                        info!("PlaybackEngine: Fim das mídias atingido (frame {}). Reprodução parada por padrão.", max_f);
                         break;
                     }
                     current_frame_clone.store(actual_frame, Ordering::SeqCst);
                 }
 
-                if let Err(err) = event_sender_clone.send(
-                    PlaybackTickEvent {
-                        frame: actual_frame,
-                        is_playing: true,
-                    },
-                ) {
-                    warn!("Failed to emit playback event: {}", err);
-                    break;
+                let guard = on_frame_update_clone.lock().await;
+                if let Some(cb) = &*guard {
+                    cb(PlaybackTickEvent { frame: actual_frame, is_playing: true });
                 }
             }
         });
 
         *handle_guard = Some(join_handle);
-        info!("PlaybackEngine: Playback started @ {:.2} FPS", fps_val);
+        info!("PlaybackEngine: Reprodução iniciada @ {:.2} FPS", fps_val);
     }
 
     pub async fn pause(&self) {
@@ -202,13 +205,8 @@ impl PlaybackEngine {
         }
 
         let frame = self.current_frame.load(Ordering::SeqCst);
-        let _ = self.event_sender.send(
-            PlaybackTickEvent {
-                frame,
-                is_playing: false,
-            },
-        );
-        info!("PlaybackEngine: Paused at frame {}", frame);
+        self.emit_tick(frame, false).await;
+        info!("PlaybackEngine: Pausado no frame {}", frame);
     }
 
     pub async fn toggle(&self) {
@@ -230,12 +228,7 @@ impl PlaybackEngine {
         self.seek_requested.store(true, Ordering::SeqCst);
         let is_play = self.is_playing.load(Ordering::SeqCst);
 
-        let _ = self.event_sender.send(
-            PlaybackTickEvent {
-                frame: target_frame,
-                is_playing: is_play,
-            },
-        );
+        self.emit_tick(target_frame, is_play).await;
     }
 
     pub async fn step_frame(&self, direction: i64) {
