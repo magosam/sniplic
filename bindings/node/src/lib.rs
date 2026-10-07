@@ -276,8 +276,7 @@ impl SniplicEngine {
         }
     }
 
-    /// Adds media to the project's media pool.
-    /// `media_item_json` must be a serialized MediaItem.
+    /// Adds media to the project's media pool manually via JSON.
     #[napi]
     pub async fn add_media(&self, media_item_json: String) -> Result<()> {
         let media_item: sniplic_core::core::project::MediaItem = serde_json::from_str(&media_item_json)
@@ -288,6 +287,67 @@ impl SniplicEngine {
             proj.media_pool.insert(media_item.id.clone(), media_item);
             proj.bump_revision();
             Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Probes a file via FFprobe, generates a MediaItem, adds it to the project, and returns the generated media_id.
+    #[napi]
+    pub async fn import_media(&self, file_path: String) -> Result<String> {
+        // Read project settings first (FPS is needed for duration conversion)
+        let target_fps = {
+            let lock = self.project.read().await;
+            if let Some(proj) = lock.as_ref() {
+                if proj.config.fps > 0.0 { proj.config.fps } else { 30.0 }
+            } else {
+                return Err(Error::new(Status::InvalidArg, "No active project".to_string()));
+            }
+        };
+
+        // Run ffprobe (CPU/IO bound, so we spawn blocking)
+        let fp_clone = file_path.clone();
+        let probe_result = tokio::task::spawn_blocking(move || {
+            sniplic_core::ffmpeg::probe::probe_file(&fp_clone, target_fps)
+        })
+        .await
+        .map_err(|e| Error::new(Status::GenericFailure, format!("JoinError: {}", e)))?
+        .map_err(|e| Error::new(Status::GenericFailure, format!("Probe failed: {}", e)))?;
+
+        // Create MediaItem
+        let media_id = format!("media_{}", uuid::Uuid::new_v4().simple());
+        let file_name = std::path::Path::new(&file_path)
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let media_item = sniplic_core::core::project::MediaItem {
+            id: media_id.clone(),
+            name: file_name,
+            file_path: std::path::PathBuf::from(file_path),
+            media_type: probe_result.media_type,
+            duration_frames: probe_result.duration_frames,
+            width: probe_result.width,
+            height: probe_result.height,
+            fps: probe_result.fps,
+            sample_rate: probe_result.sample_rate,
+            channels: probe_result.channels,
+            added_at: now,
+            folder_id: None,
+        };
+
+        // Insert into pool
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            proj.media_pool.insert(media_item.id.clone(), media_item);
+            proj.bump_revision();
+            Ok(media_id)
         } else {
             Err(Error::new(Status::InvalidArg, "No active project".to_string()))
         }
