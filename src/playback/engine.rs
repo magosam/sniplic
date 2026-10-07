@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tracing::{info, warn};
+use tracing::info;
 
 #[derive(Clone, serde::Serialize)]
 pub struct PlaybackTickEvent {
