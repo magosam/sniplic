@@ -275,4 +275,139 @@ impl SniplicEngine {
             Err(Error::new(Status::InvalidArg, "No active project".to_string()))
         }
     }
+
+    /// Adds media to the project's media pool.
+    /// `media_item_json` must be a serialized MediaItem.
+    #[napi]
+    pub async fn add_media(&self, media_item_json: String) -> Result<()> {
+        let media_item: sniplic_core::core::project::MediaItem = serde_json::from_str(&media_item_json)
+            .map_err(|e| Error::new(Status::InvalidArg, format!("Invalid MediaItem JSON: {}", e)))?;
+        
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            proj.media_pool.insert(media_item.id.clone(), media_item);
+            proj.bump_revision();
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Removes media from the project's media pool.
+    #[napi]
+    pub async fn remove_media(&self, media_id: String) -> Result<()> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            proj.media_pool.remove(&media_id);
+            proj.bump_revision();
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Adds a new track to the timeline.
+    /// track_type should be "Video" or "Audio".
+    #[napi]
+    pub async fn add_track(&self, track_type: String, near_track_id: Option<String>) -> Result<String> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            let t_type = if track_type.eq_ignore_ascii_case("audio") {
+                sniplic_core::core::project::TrackType::Audio
+            } else {
+                sniplic_core::core::project::TrackType::Video
+            };
+            
+            let track = sniplic_core::core::timeline::TimelineEngine::add_track(
+                proj,
+                t_type,
+                near_track_id.as_deref(),
+            ).map_err(|e| Error::new(Status::GenericFailure, format!("AddTrack failed: {}", e)))?;
+            
+            Ok(track.id)
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Removes a track from the timeline.
+    #[napi]
+    pub async fn remove_track(&self, track_id: String) -> Result<()> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            proj.tracks.retain(|t| t.id != track_id);
+            proj.bump_revision();
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Sets the volume of a clip (0.0 to 1.0+).
+    #[napi]
+    pub async fn set_clip_volume(&self, clip_id: String, volume: f64) -> Result<()> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            let mut found = false;
+            for track in &mut proj.tracks {
+                for clip in &mut track.clips {
+                    if clip.id == clip_id {
+                        clip.audio.volume = volume as f32;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if found {
+                proj.bump_revision();
+                Ok(())
+            } else {
+                Err(Error::new(Status::InvalidArg, "Clip not found".to_string()))
+            }
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Sets the transform plugin data (JSON) of a clip.
+    #[napi]
+    pub async fn set_clip_transform(&self, clip_id: String, transform_json: String) -> Result<()> {
+        let transform_data: serde_json::Value = serde_json::from_str(&transform_json)
+            .map_err(|e| Error::new(Status::InvalidArg, format!("Invalid Transform JSON: {}", e)))?;
+
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            let mut found = false;
+            for track in &mut proj.tracks {
+                for clip in &mut track.clips {
+                    if clip.id == clip_id {
+                        clip.transform_plugin_data = Some(transform_data.clone());
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if found {
+                proj.bump_revision();
+                Ok(())
+            } else {
+                Err(Error::new(Status::InvalidArg, "Clip not found".to_string()))
+            }
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
+
+    /// Compacts main tracks (V1 and A1) to eliminate gaps.
+    #[napi]
+    pub async fn compact_main_tracks(&self) -> Result<()> {
+        let mut lock = self.project.write().await;
+        if let Some(proj) = lock.as_mut() {
+            sniplic_core::core::timeline::TimelineEngine::compact_main_tracks(proj)
+                .map_err(|e| Error::new(Status::GenericFailure, format!("Compact failed: {}", e)))?;
+            Ok(())
+        } else {
+            Err(Error::new(Status::InvalidArg, "No active project".to_string()))
+        }
+    }
 }
