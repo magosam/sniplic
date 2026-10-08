@@ -1,18 +1,41 @@
-use crate::core::project::Project;
+use crate::core::project::{Project, Track, Clip};
 use crate::error::AppResult;
+use crate::core::timeline::TimelineEngine;
+use std::any::Any;
 
 /// A reversible action that can be executed on a project.
-pub trait Command: Send + Sync {
+pub trait Command: Any + Send + Sync {
     /// Executes the command, modifying the project.
     fn execute(&mut self, project: &mut Project) -> AppResult<()>;
+    
     /// Reverts the modifications applied by this command.
     fn undo(&mut self, project: &mut Project) -> AppResult<()>;
+    
+    /// The display name of the command for the UI History panel.
+    fn name(&self) -> &str;
+    
+    /// Attempts to merge this command with a new incoming command.
+    /// Useful for debouncing continuous changes like volume sliders.
+    /// Returns true if merged successfully.
+    fn merge(&mut self, _other: &dyn Command) -> bool {
+        false
+    }
+
+    /// Allows downcasting for merge implementations
+    fn as_any(&self) -> &dyn Any;
 }
 
-/// Manages a stack of commands to provide Undo and Redo functionality without serializing the whole project.
+/// Metadata for a history entry
+pub struct HistoryEntry {
+    pub id: String,
+    pub timestamp: u64,
+    pub command: Box<dyn Command>,
+}
+
+/// Manages a stack of commands to provide Undo and Redo functionality.
 pub struct HistoryManager {
-    undo_stack: Vec<Box<dyn Command>>,
-    redo_stack: Vec<Box<dyn Command>>,
+    undo_stack: Vec<HistoryEntry>,
+    redo_stack: Vec<HistoryEntry>,
 }
 
 impl HistoryManager {
@@ -23,30 +46,43 @@ impl HistoryManager {
         }
     }
 
-    /// Executes a command and registers it in the history stack.
     pub fn execute_command(&mut self, mut command: Box<dyn Command>, project: &mut Project) -> AppResult<()> {
         command.execute(project)?;
-        self.undo_stack.push(command);
+        
+        // Attempt to merge with the last command in the stack
+        if let Some(last_entry) = self.undo_stack.last_mut() {
+            if last_entry.command.merge(command.as_ref()) {
+                // Merged successfully, no need to push a new command
+                self.redo_stack.clear();
+                return Ok(());
+            }
+        }
+
+        let entry = HistoryEntry {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64,
+            command,
+        };
+
+        self.undo_stack.push(entry);
         self.redo_stack.clear(); // Any new action invalidates the redo future
         Ok(())
     }
 
-    /// Pops the last command from the undo stack and calls undo() on it.
     pub fn undo(&mut self, project: &mut Project) -> AppResult<bool> {
-        if let Some(mut command) = self.undo_stack.pop() {
-            command.undo(project)?;
-            self.redo_stack.push(command);
+        if let Some(mut entry) = self.undo_stack.pop() {
+            entry.command.undo(project)?;
+            self.redo_stack.push(entry);
             Ok(true)
         } else {
             Ok(false)
         }
     }
 
-    /// Pops the last undone command from the redo stack and calls execute() on it.
     pub fn redo(&mut self, project: &mut Project) -> AppResult<bool> {
-        if let Some(mut command) = self.redo_stack.pop() {
-            command.execute(project)?;
-            self.undo_stack.push(command);
+        if let Some(mut entry) = self.redo_stack.pop() {
+            entry.command.execute(project)?;
+            self.undo_stack.push(entry);
             Ok(true)
         } else {
             Ok(false)
@@ -60,11 +96,8 @@ impl HistoryManager {
 }
 
 // ------------------------------------------------------------------
-// PROOF OF CONCEPT: Command Implementations
+// COMMAND IMPLEMENTATIONS
 // ------------------------------------------------------------------
-
-use crate::core::timeline::TimelineEngine;
-use crate::core::project::Clip;
 
 pub struct AddClipCommand {
     track_id: String,
@@ -74,6 +107,7 @@ pub struct AddClipCommand {
     image_duration_frames: Option<u64>,
     // State needed for Undo
     inserted_clip_id: Option<String>,
+    track_snapshot: Option<Track>, // Snapshot of the track before insertion (to revert complex ripples)
 }
 
 impl AddClipCommand {
@@ -84,13 +118,19 @@ impl AddClipCommand {
             start_frame, 
             push, 
             image_duration_frames, 
-            inserted_clip_id: None 
+            inserted_clip_id: None,
+            track_snapshot: None,
         }
     }
 }
 
 impl Command for AddClipCommand {
     fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        // Snapshot the track before we mess with it, just in case push/ripple changes many clips
+        if let Some(track) = project.tracks.iter().find(|t| t.id == self.track_id) {
+            self.track_snapshot = Some(track.clone());
+        }
+
         let clip = TimelineEngine::add_clip(
             project, 
             &self.track_id, 
@@ -104,19 +144,25 @@ impl Command for AddClipCommand {
     }
 
     fn undo(&mut self, project: &mut Project) -> AppResult<()> {
-        if let Some(clip_id) = &self.inserted_clip_id {
-            TimelineEngine::remove_clip(project, clip_id, self.push)?;
+        // To perfectly revert any ripple push, we restore the track to its snapshot state
+        if let Some(snapshot) = &self.track_snapshot {
+            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == self.track_id) {
+                *track = snapshot.clone();
+            }
         }
         Ok(())
     }
+
+    fn name(&self) -> &str { "Add Clip" }
+    fn as_any(&self) -> &dyn Any { self }
 }
 
 pub struct RemoveClipCommand {
     clip_id: String,
     gapless: bool,
     // State needed for Undo
-    removed_clip: Option<Clip>,
     track_id: Option<String>,
+    track_snapshot: Option<Track>,
 }
 
 impl RemoveClipCommand {
@@ -124,19 +170,19 @@ impl RemoveClipCommand {
         Self { 
             clip_id, 
             gapless, 
-            removed_clip: None, 
-            track_id: None 
+            track_id: None,
+            track_snapshot: None,
         }
     }
 }
 
 impl Command for RemoveClipCommand {
     fn execute(&mut self, project: &mut Project) -> AppResult<()> {
-        // Save the clip state before removing it
+        // Snapshot the track before removing, so we can restore all rippled clips exactly
         for t in &project.tracks {
-            if let Some(c) = t.clips.iter().find(|c| c.id == self.clip_id) {
-                self.removed_clip = Some(c.clone());
+            if t.clips.iter().any(|c| c.id == self.clip_id) {
                 self.track_id = Some(t.id.clone());
+                self.track_snapshot = Some(t.clone());
                 break;
             }
         }
@@ -145,14 +191,69 @@ impl Command for RemoveClipCommand {
     }
 
     fn undo(&mut self, project: &mut Project) -> AppResult<()> {
-        if let (Some(clip), Some(track_id)) = (&self.removed_clip, &self.track_id) {
-            let track = project.tracks.iter_mut().find(|t| t.id == *track_id)
-                .ok_or_else(|| crate::error::AppError::InvalidOperation("Track not found for undo".to_string()))?;
-            track.clips.push(clip.clone());
-            track.clips.sort_by_key(|c| c.start_frame);
-            // Note: If gapless was true, restoring the ripple shift would require moving the other clips back.
-            // For a robust implementation, complex ripples can clone the Track state before execution instead.
+        if let (Some(track_id), Some(snapshot)) = (&self.track_id, &self.track_snapshot) {
+            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *track_id) {
+                *track = snapshot.clone();
+            }
         }
         Ok(())
+    }
+
+    fn name(&self) -> &str { "Remove Clip" }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+// ------------------------------------------------------------------
+// PROOF OF CONCEPT: Mergeable Command (Volume Slider)
+// ------------------------------------------------------------------
+
+pub struct SetClipVolumeCommand {
+    clip_id: String,
+    new_volume: f32,
+    old_volume: f32,
+}
+
+impl SetClipVolumeCommand {
+    pub fn new(clip_id: String, new_volume: f32, old_volume: f32) -> Self {
+        Self { clip_id, new_volume, old_volume }
+    }
+}
+
+impl Command for SetClipVolumeCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        for t in &mut project.tracks {
+            if let Some(c) = t.clips.iter_mut().find(|c| c.id == self.clip_id) {
+                if let Some(audio) = &mut c.audio {
+                    audio.volume = self.new_volume;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        for t in &mut project.tracks {
+            if let Some(c) = t.clips.iter_mut().find(|c| c.id == self.clip_id) {
+                if let Some(audio) = &mut c.audio {
+                    audio.volume = self.old_volume;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Change Volume" }
+    fn as_any(&self) -> &dyn Any { self }
+
+    fn merge(&mut self, other: &dyn Command) -> bool {
+        // If the next command is also a SetClipVolumeCommand for the same clip,
+        // we absorb its new_volume, but keep our original old_volume!
+        if let Some(other_cmd) = other.as_any().downcast_ref::<SetClipVolumeCommand>() {
+            if self.clip_id == other_cmd.clip_id {
+                self.new_volume = other_cmd.new_volume;
+                return true;
+            }
+        }
+        false
     }
 }
