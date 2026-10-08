@@ -1,6 +1,6 @@
 [package]
 name = "sniplic-node"
-version = "0.2.363"
+version = "0.2.364"
 edition = "2021"
 
 [lib]
