@@ -47,7 +47,7 @@ graph TD
 - **Agnostic & Headless**: 100% decoupled from UI frameworks. Runs as a background worker or binds directly to React, Vue, Tauri, etc.
 - **Advanced Compositing**: Native parsing for visual filters, affine transforms, 3D LUTs, gapless tracking, and ripple editing.
 - **Audio DSP Pipeline**: Built-in Equalization and Noise Reduction processing injected directly into the FFmpeg render graph.
-- **Local AI Subtitles**: Deep ONNX Runtime integration for offline audio transcription and word-level timestamp generation.
+- **Local AI Subtitles**: Deep ONNX Runtime integration for offline audio transcription and word-level timestamp generation *(Note: The engine is currently hardcoded exclusively to the local Parakeet v3 model. It does not support connecting to external providers or generic AIs out-of-the-box).*
 - **Transactional Memory**: In-memory Undo/Redo history stacks for instant project state-switching without JSON overhead.
 
 ## Getting Started (Node.js / TypeScript)
