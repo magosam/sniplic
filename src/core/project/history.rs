@@ -694,12 +694,20 @@ impl Command for AddFilterTrackCommand {
 pub struct UpdateClipTransformCommand {
     clip_id: String,
     new_transform: Transform,
+    new_plugin_data: Option<serde_json::Value>,
     old_transform: Option<Transform>,
+    old_plugin_data: Option<Option<serde_json::Value>>,
 }
 
 impl UpdateClipTransformCommand {
-    pub fn new(clip_id: String, new_transform: Transform) -> Self {
-        Self { clip_id, new_transform, old_transform: None }
+    pub fn new(clip_id: String, new_transform: Transform, new_plugin_data: Option<serde_json::Value>) -> Self {
+        Self { 
+            clip_id, 
+            new_transform, 
+            new_plugin_data, 
+            old_transform: None, 
+            old_plugin_data: None 
+        }
     }
 }
 
@@ -708,7 +716,10 @@ impl Command for UpdateClipTransformCommand {
         for t in &mut project.tracks {
             if let Some(c) = t.clips.iter_mut().find(|c| c.id == self.clip_id) {
                 self.old_transform = Some(c.transform.clone());
+                self.old_plugin_data = Some(c.transform_plugin_data.clone());
+                
                 c.transform = self.new_transform.clone();
+                c.transform_plugin_data = self.new_plugin_data.clone();
                 break;
             }
         }
@@ -716,10 +727,11 @@ impl Command for UpdateClipTransformCommand {
     }
 
     fn undo(&mut self, project: &mut Project) -> AppResult<()> {
-        if let Some(old) = &self.old_transform {
+        if let (Some(old_t), Some(old_p)) = (&self.old_transform, &self.old_plugin_data) {
             for t in &mut project.tracks {
                 if let Some(c) = t.clips.iter_mut().find(|c| c.id == self.clip_id) {
-                    c.transform = old.clone();
+                    c.transform = old_t.clone();
+                    c.transform_plugin_data = old_p.clone();
                     break;
                 }
             }
@@ -734,6 +746,7 @@ impl Command for UpdateClipTransformCommand {
         if let Some(other_cmd) = other.as_any().downcast_ref::<UpdateClipTransformCommand>() {
             if self.clip_id == other_cmd.clip_id {
                 self.new_transform = other_cmd.new_transform.clone();
+                self.new_plugin_data = other_cmd.new_plugin_data.clone();
                 return true;
             }
         }
