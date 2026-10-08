@@ -753,3 +753,37 @@ impl Command for UpdateClipTransformCommand {
         false
     }
 }
+
+// ------------------------------------------------------------------
+// SUBTITLES COMMANDS
+// ------------------------------------------------------------------
+use crate::core::project::subtitles::ProjectSubtitles;
+
+pub struct SetProjectSubtitlesCommand {
+    new_subtitles: Option<ProjectSubtitles>,
+    old_subtitles: Option<Option<ProjectSubtitles>>,
+}
+
+impl SetProjectSubtitlesCommand {
+    pub fn new(new_subtitles: Option<ProjectSubtitles>) -> Self {
+        Self { new_subtitles, old_subtitles: None }
+    }
+}
+
+impl Command for SetProjectSubtitlesCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        self.old_subtitles = Some(project.subtitles.clone());
+        project.subtitles = self.new_subtitles.clone();
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let Some(old) = &self.old_subtitles {
+            project.subtitles = old.clone();
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Edit Subtitles" }
+    fn as_any(&self) -> &dyn Any { self }
+}
