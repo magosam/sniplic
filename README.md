@@ -2,7 +2,7 @@
   <h1>Sniplic Core</h1>
   <p><strong>A high-performance, headless Non-Linear Video Editing (NLE) engine.</strong></p>
 
-  [![Version](https://img.shields.io/badge/version-0.2.369-blue.svg)]()
+  [![Version](https://img.shields.io/badge/version-0.2.370-blue.svg)]()
   [![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://www.rust-lang.org)
   [![Node.js](https://img.shields.io/badge/Node.js-NAPI--RS-green.svg)](https://nodejs.org)
   [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-purple.svg)]()
