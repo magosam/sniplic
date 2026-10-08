@@ -42,6 +42,9 @@ graph TD
     CORE --> FFMPEG
 ```
 
+## FFmpeg Integration
+Sniplic interacts with FFmpeg strictly via out-of-process CLI invocation (`std::process::Command`), building and piping complex filter graphs. There are no C/FFI bindings (e.g., `ffmpeg-next`). This prevents C-level segfaults from crashing the Rust engine and avoids GPL contamination.
+
 ## Core Features
 - **Frame-Accurate Clock**: Strict `u64` frame-based timeline and hardware-synchronized Tokio playback to eliminate floating-point drift.
 - **Agnostic & Headless**: 100% decoupled from UI frameworks. Runs as a background worker or binds directly to React, Vue, Tauri, etc.
