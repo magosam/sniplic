@@ -190,7 +190,20 @@ impl Project {
 
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> AppResult<()> {
         let json_str = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, json_str)?;
+        let path = path.as_ref();
+        
+        // Use an atomic save pattern: write to a .tmp file first
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, json_str)?;
+        
+        // Force the OS to flush the file to disk (fsync)
+        if let Ok(file) = std::fs::File::open(&tmp_path) {
+            let _ = file.sync_all();
+        }
+
+        // Rename the temporary file to the final destination
+        std::fs::rename(&tmp_path, path)?;
+        
         Ok(())
     }
 
