@@ -259,3 +259,179 @@ impl Command for SetClipVolumeCommand {
         false
     }
 }
+
+// ------------------------------------------------------------------
+// MOVEMENT AND SLICING COMMANDS
+// ------------------------------------------------------------------
+
+pub struct MoveClipCommand {
+    clip_id: String,
+    target_track_id: String,
+    new_start: u64,
+    push: bool,
+    gapless: bool,
+    // Undo state: We snapshot both the source track and the target track
+    source_track_id: Option<String>,
+    source_track_snapshot: Option<Track>,
+    target_track_snapshot: Option<Track>,
+}
+
+impl MoveClipCommand {
+    pub fn new(clip_id: String, target_track_id: String, new_start: u64, push: bool, gapless: bool) -> Self {
+        Self {
+            clip_id,
+            target_track_id,
+            new_start,
+            push,
+            gapless,
+            source_track_id: None,
+            source_track_snapshot: None,
+            target_track_snapshot: None,
+        }
+    }
+}
+
+impl Command for MoveClipCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        // Snapshot the tracks involved
+        for t in &project.tracks {
+            if t.clips.iter().any(|c| c.id == self.clip_id) {
+                self.source_track_id = Some(t.id.clone());
+                self.source_track_snapshot = Some(t.clone());
+                break;
+            }
+        }
+        if let Some(target) = project.tracks.iter().find(|t| t.id == self.target_track_id) {
+            self.target_track_snapshot = Some(target.clone());
+        }
+
+        TimelineEngine::move_clip(project, &self.clip_id, &self.target_track_id, self.new_start, self.push, self.gapless)?;
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let (Some(s_id), Some(s_snap)) = (&self.source_track_id, &self.source_track_snapshot) {
+            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *s_id) {
+                *track = s_snap.clone();
+            }
+        }
+        // If the source and target tracks are different, restore the target track too
+        if Some(&self.target_track_id) != self.source_track_id.as_ref() {
+            if let Some(t_snap) = &self.target_track_snapshot {
+                if let Some(track) = project.tracks.iter_mut().find(|t| t.id == self.target_track_id) {
+                    *track = t_snap.clone();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Move Clip" }
+    fn as_any(&self) -> &dyn Any { self }
+
+    fn merge(&mut self, other: &dyn Command) -> bool {
+        // Allows debouncing continuous dragging of a clip
+        if let Some(other_cmd) = other.as_any().downcast_ref::<MoveClipCommand>() {
+            if self.clip_id == other_cmd.clip_id && self.target_track_id == other_cmd.target_track_id 
+               && self.push == other_cmd.push && self.gapless == other_cmd.gapless {
+                self.new_start = other_cmd.new_start;
+                return true;
+            }
+        }
+        false
+    }
+}
+
+pub struct SplitClipCommand {
+    clip_id: String,
+    split_frame: u64,
+    track_id: Option<String>,
+    track_snapshot: Option<Track>,
+}
+
+impl SplitClipCommand {
+    pub fn new(clip_id: String, split_frame: u64) -> Self {
+        Self { clip_id, split_frame, track_id: None, track_snapshot: None }
+    }
+}
+
+impl Command for SplitClipCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        for t in &project.tracks {
+            if t.clips.iter().any(|c| c.id == self.clip_id) {
+                self.track_id = Some(t.id.clone());
+                self.track_snapshot = Some(t.clone());
+                break;
+            }
+        }
+        TimelineEngine::split_clip(project, &self.clip_id, self.split_frame)?;
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let (Some(t_id), Some(snap)) = (&self.track_id, &self.track_snapshot) {
+            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *t_id) {
+                *track = snap.clone();
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Split Clip" }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+pub struct TrimClipCommand {
+    clip_id: String,
+    edge: String, // "left" or "right"
+    target_frame: u64,
+    push: bool,
+    snap: bool,
+    gapless: bool,
+    track_id: Option<String>,
+    track_snapshot: Option<Track>,
+}
+
+impl TrimClipCommand {
+    pub fn new(clip_id: String, edge: String, target_frame: u64, push: bool, snap: bool, gapless: bool) -> Self {
+        Self { clip_id, edge, target_frame, push, snap, gapless, track_id: None, track_snapshot: None }
+    }
+}
+
+impl Command for TrimClipCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        for t in &project.tracks {
+            if t.clips.iter().any(|c| c.id == self.clip_id) {
+                self.track_id = Some(t.id.clone());
+                self.track_snapshot = Some(t.clone());
+                break;
+            }
+        }
+        TimelineEngine::trim_clip(project, &self.clip_id, &self.edge, self.target_frame, self.push, self.snap, self.gapless)?;
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let (Some(t_id), Some(snap)) = (&self.track_id, &self.track_snapshot) {
+            if let Some(track) = project.tracks.iter_mut().find(|t| t.id == *t_id) {
+                *track = snap.clone();
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Trim Clip" }
+    fn as_any(&self) -> &dyn Any { self }
+
+    fn merge(&mut self, other: &dyn Command) -> bool {
+        // Allows debouncing continuous dragging of a trim handle
+        if let Some(other_cmd) = other.as_any().downcast_ref::<TrimClipCommand>() {
+            if self.clip_id == other_cmd.clip_id && self.edge == other_cmd.edge 
+               && self.push == other_cmd.push && self.gapless == other_cmd.gapless {
+                self.target_frame = other_cmd.target_frame;
+                return true;
+            }
+        }
+        false
+    }
+}
