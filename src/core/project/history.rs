@@ -49,18 +49,24 @@ impl HistoryManager {
     pub fn execute_command(&mut self, mut command: Box<dyn Command>, project: &mut Project) -> AppResult<()> {
         command.execute(project)?;
         
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+
         // Attempt to merge with the last command in the stack
         if let Some(last_entry) = self.undo_stack.last_mut() {
-            if last_entry.command.merge(command.as_ref()) {
-                // Merged successfully, no need to push a new command
-                self.redo_stack.clear();
-                return Ok(());
+            // Only allow merge if the last command occurred within a 2-second window (2000ms)
+            if now.saturating_sub(last_entry.timestamp) <= 2000 {
+                if last_entry.command.merge(command.as_ref()) {
+                    // Merged successfully, renew the timestamp and we don't push a new command
+                    last_entry.timestamp = now;
+                    self.redo_stack.clear();
+                    return Ok(());
+                }
             }
         }
 
         let entry = HistoryEntry {
             id: uuid::Uuid::new_v4().to_string(),
-            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64,
+            timestamp: now,
             command,
         };
 
