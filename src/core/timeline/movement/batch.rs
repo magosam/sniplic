@@ -1,7 +1,7 @@
 use crate::core::project::{Clip, MediaType, Project, TrackType};
 use crate::error::{AppError, AppResult};
 use super::super::gapless;
-use super::super::ripple::push_right_minimal;
+use super::super::ripple::{push_left_minimal, push_right_minimal};
 use super::super::tracks::TrackOperations;
 use super::truncate::truncate_overlapping_clips_ignoring;
 use super::types::MoveClipItem;
@@ -148,6 +148,7 @@ pub fn move_clips_batch(
             if let Some(target) = project.tracks.iter_mut().find(|t| t.id == target_track_id) {
                 if push && is_main {
                     push_right_minimal(&mut target.clips, mv.new_start_frame, mv.new_start_frame + clip.duration_frames);
+                    push_left_minimal(&mut target.clips, mv.new_start_frame, mv.new_start_frame);
                 } else {
                     truncate_overlapping_clips_ignoring(
                         target,
