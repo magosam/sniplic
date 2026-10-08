@@ -25,8 +25,9 @@ impl TimelineEngine {
         start_frame: u64,
         push: bool,
         image_duration_frames: Option<u64>,
+        push_direction: Option<String>,
     ) -> AppResult<Clip> {
-        InsertOperations::add_clip(project, track_id, media_id, start_frame, push, image_duration_frames)
+        InsertOperations::add_clip(project, track_id, media_id, start_frame, push, image_duration_frames, push_direction)
     }
 
     pub fn add_clips_batch(
@@ -36,8 +37,9 @@ impl TimelineEngine {
         target_track_id: Option<String>,
         push: bool,
         image_duration_frames: Option<u64>,
+        push_direction: Option<String>,
     ) -> AppResult<Vec<Clip>> {
-        InsertOperations::add_clips_batch(project, media_ids, start_frame, target_track_id, push, image_duration_frames)
+        InsertOperations::add_clips_batch(project, media_ids, start_frame, target_track_id, push, image_duration_frames, push_direction)
     }
 
     pub fn move_clip(
@@ -47,8 +49,9 @@ impl TimelineEngine {
         new_start: u64,
         push: bool,
         gapless: bool,
+        push_direction: Option<String>,
     ) -> AppResult<()> {
-        MovementOperations::move_clip(project, clip_id, target_track_id, new_start, push, gapless)
+        MovementOperations::move_clip(project, clip_id, target_track_id, new_start, push, gapless, push_direction)
     }
 
     pub fn move_clips_batch(

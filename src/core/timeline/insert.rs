@@ -16,6 +16,7 @@ impl InsertOperations {
         start_frame: u64,
         push: bool,
         image_duration_frames: Option<u64>,
+        push_direction: Option<String>,
     ) -> AppResult<Clip> {
         let is_main = gapless::track_allows_gapless(project, track_id);
         let media = project.media_pool.get(media_id)
@@ -49,11 +50,15 @@ impl InsertOperations {
             media.duration_frames
         };
         if push && is_main {
-            // Push the rest (start_frame >= start_frame) the MINIMUM
-            // required not to overlap the new clip. Extra tracks are free and never yield space.
-            push_right_minimal(&mut track.clips, start_frame, start_frame + dur);
-            // Push left to allow bi-directional ripple push when swapping from the right
-            push_left_minimal(&mut track.clips, start_frame, start_frame);
+            if push_direction.as_deref() == Some("left") {
+                // If explicitly swapping to the left, push left FIRST so it owns the mathematical tiebreaker
+                push_left_minimal(&mut track.clips, start_frame, start_frame);
+                push_right_minimal(&mut track.clips, start_frame, start_frame + dur);
+            } else {
+                // Default tiebreaker goes to right push
+                push_right_minimal(&mut track.clips, start_frame, start_frame + dur);
+                push_left_minimal(&mut track.clips, start_frame, start_frame);
+            }
         } else {
             // "a media item is never added on top of another while the underlying one remains the same size.
             // the obscured part is always lost, as if deleted."
@@ -102,6 +107,7 @@ impl InsertOperations {
         target_track: Option<String>,
         push: bool,
         image_duration_frames: Option<u64>,
+        push_direction: Option<String>,
     ) -> AppResult<Vec<Clip>> {
         let mut inserted = Vec::new();
         let mut v_offset = start;
@@ -131,7 +137,7 @@ impl InsertOperations {
                 } else {
                     v_offset
                 };
-                let clip = Self::add_clip(project, &track_id, id, cur_start, push, image_duration_frames)?;
+                let clip = Self::add_clip(project, &track_id, id, cur_start, push, image_duration_frames, push_direction.clone())?;
                 if is_audio {
                     a_offset = cur_start + clip.duration_frames;
                 } else {

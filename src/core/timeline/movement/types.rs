@@ -13,4 +13,8 @@ pub struct MoveClipItem {
     /// a sentinel, or when the frontend had no reference track.
     #[serde(default)]
     pub near_track_id: Option<String>,
+    /// Explicit direction for the push tiebreaker when inserting or moving a clip 
+    /// exactly on the boundary of another clip ("left" or "right").
+    #[serde(default)]
+    pub push_direction: Option<String>,
 }

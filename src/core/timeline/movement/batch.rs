@@ -147,8 +147,13 @@ pub fn move_clips_batch(
             let is_main = gapless::track_allows_gapless(project, &target_track_id);
             if let Some(target) = project.tracks.iter_mut().find(|t| t.id == target_track_id) {
                 if push && is_main {
-                    push_right_minimal(&mut target.clips, mv.new_start_frame, mv.new_start_frame + clip.duration_frames);
-                    push_left_minimal(&mut target.clips, mv.new_start_frame, mv.new_start_frame);
+                    if mv.push_direction.as_deref() == Some("left") {
+                        push_left_minimal(&mut target.clips, mv.new_start_frame, mv.new_start_frame);
+                        push_right_minimal(&mut target.clips, mv.new_start_frame, mv.new_start_frame + clip.duration_frames);
+                    } else {
+                        push_right_minimal(&mut target.clips, mv.new_start_frame, mv.new_start_frame + clip.duration_frames);
+                        push_left_minimal(&mut target.clips, mv.new_start_frame, mv.new_start_frame);
+                    }
                 } else {
                     truncate_overlapping_clips_ignoring(
                         target,

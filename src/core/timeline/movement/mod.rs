@@ -30,8 +30,9 @@ impl MovementOperations {
         new_start: u64,
         push: bool,
         gapless_enabled: bool,
+        push_direction: Option<String>,
     ) -> AppResult<()> {
-        single::move_clip(project, clip_id, target_track_id, new_start, push, gapless_enabled)
+        single::move_clip(project, clip_id, target_track_id, new_start, push, gapless_enabled, push_direction)
     }
 
     #[inline]

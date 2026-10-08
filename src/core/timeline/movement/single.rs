@@ -10,12 +10,14 @@ pub fn move_clip(
     new_start: u64,
     push: bool,
     gapless_enabled: bool,
+    push_direction: Option<String>,
 ) -> AppResult<()> {
     let moves = vec![MoveClipItem {
         clip_id: clip_id.to_string(),
         target_track_id: target_track_id.to_string(),
         new_start_frame: new_start,
         near_track_id: None,
+        push_direction,
     }];
     move_clips_batch(project, &moves, push, gapless_enabled)?;
     Ok(())

@@ -293,7 +293,7 @@ impl SniplicEngine {
 
     /// Adds multiple clips to the timeline in one atomic operation.
     #[napi]
-    pub async fn add_clips_batch(&self, media_ids_json: String, start_frame: u32, target_track_id: Option<String>, push: bool) -> Result<()> {
+    pub async fn add_clips_batch(&self, media_ids_json: String, start_frame: u32, target_track_id: Option<String>, push: bool, push_direction: Option<String>) -> Result<()> {
         let media_ids: Vec<String> = serde_json::from_str(&media_ids_json)
             .map_err(|_| Error::new(Status::InvalidArg, "Invalid media_ids JSON array".to_string()))?;
             
@@ -305,7 +305,8 @@ impl SniplicEngine {
                 start_frame as u64,
                 target_track_id,
                 push,
-                None
+                None,
+                push_direction
             ).map_err(|e| Error::new(Status::GenericFailure, format!("BatchAdd failed: {}", e)))?;
             Ok(())
         } else {
@@ -408,6 +409,7 @@ impl SniplicEngine {
                 start_frame as u64,
                 false, // Push
                 None, // Image duration
+                None, // push_direction
             ).map_err(|e| Error::new(Status::GenericFailure, format!("AddClip failed: {}", e)))?;
             Ok(())
         } else {
@@ -453,7 +455,7 @@ impl SniplicEngine {
 
     /// Moves a clip to a new start frame or a different track.
     #[napi]
-    pub async fn move_clip(&self, clip_id: String, target_track_id: String, new_start: u32, push: bool, gapless: bool) -> Result<()> {
+    pub async fn move_clip(&self, clip_id: String, target_track_id: String, new_start: u32, push: bool, gapless: bool, push_direction: Option<String>) -> Result<()> {
         let mut lock = self.project.write().await;
         if let Some(proj) = lock.as_mut() {
             sniplic_core::core::timeline::TimelineEngine::move_clip(
@@ -463,6 +465,7 @@ impl SniplicEngine {
                 new_start as u64,
                 push,
                 gapless,
+                push_direction
             ).map_err(|e| Error::new(Status::GenericFailure, format!("MoveClip failed: {}", e)))?;
             Ok(())
         } else {

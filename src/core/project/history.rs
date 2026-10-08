@@ -111,19 +111,21 @@ pub struct AddClipCommand {
     start_frame: u64,
     push: bool,
     image_duration_frames: Option<u64>,
+    push_direction: Option<String>,
     // State needed for Undo
     inserted_clip_id: Option<String>,
     track_snapshot: Option<Track>, // Snapshot of the track before insertion (to revert complex ripples)
 }
 
 impl AddClipCommand {
-    pub fn new(track_id: String, media_id: String, start_frame: u64, push: bool, image_duration_frames: Option<u64>) -> Self {
+    pub fn new(track_id: String, media_id: String, start_frame: u64, push: bool, image_duration_frames: Option<u64>, push_direction: Option<String>) -> Self {
         Self { 
             track_id, 
             media_id, 
             start_frame, 
             push, 
             image_duration_frames, 
+            push_direction,
             inserted_clip_id: None,
             track_snapshot: None,
         }
@@ -143,7 +145,8 @@ impl Command for AddClipCommand {
             &self.media_id, 
             self.start_frame, 
             self.push, 
-            self.image_duration_frames
+            self.image_duration_frames,
+            self.push_direction.clone()
         )?;
         self.inserted_clip_id = Some(clip.id);
         Ok(())
@@ -270,6 +273,7 @@ pub struct MoveClipCommand {
     new_start: u64,
     push: bool,
     gapless: bool,
+    push_direction: Option<String>,
     // Undo state: We snapshot both the source track and the target track
     source_track_id: Option<String>,
     source_track_snapshot: Option<Track>,
@@ -277,13 +281,14 @@ pub struct MoveClipCommand {
 }
 
 impl MoveClipCommand {
-    pub fn new(clip_id: String, target_track_id: String, new_start: u64, push: bool, gapless: bool) -> Self {
+    pub fn new(clip_id: String, target_track_id: String, new_start: u64, push: bool, gapless: bool, push_direction: Option<String>) -> Self {
         Self {
             clip_id,
             target_track_id,
             new_start,
             push,
             gapless,
+            push_direction,
             source_track_id: None,
             source_track_snapshot: None,
             target_track_snapshot: None,
@@ -305,7 +310,7 @@ impl Command for MoveClipCommand {
             self.target_track_snapshot = Some(target.clone());
         }
 
-        TimelineEngine::move_clip(project, &self.clip_id, &self.target_track_id, self.new_start, self.push, self.gapless)?;
+        TimelineEngine::move_clip(project, &self.clip_id, &self.target_track_id, self.new_start, self.push, self.gapless, self.push_direction.clone())?;
         Ok(())
     }
 
@@ -448,19 +453,20 @@ pub struct AddClipsBatchCommand {
     target_track_id: Option<String>,
     push: bool,
     image_duration_frames: Option<u64>,
+    push_direction: Option<String>,
     tracks_snapshot: Option<Vec<Track>>,
 }
 
 impl AddClipsBatchCommand {
-    pub fn new(media_ids: Vec<String>, start_frame: u64, target_track_id: Option<String>, push: bool, image_duration_frames: Option<u64>) -> Self {
-        Self { media_ids, start_frame, target_track_id, push, image_duration_frames, tracks_snapshot: None }
+    pub fn new(media_ids: Vec<String>, start_frame: u64, target_track_id: Option<String>, push: bool, image_duration_frames: Option<u64>, push_direction: Option<String>) -> Self {
+        Self { media_ids, start_frame, target_track_id, push, image_duration_frames, push_direction, tracks_snapshot: None }
     }
 }
 
 impl Command for AddClipsBatchCommand {
     fn execute(&mut self, project: &mut Project) -> AppResult<()> {
         self.tracks_snapshot = Some(project.tracks.clone());
-        TimelineEngine::add_clips_batch(project, &self.media_ids, self.start_frame, self.target_track_id.clone(), self.push, self.image_duration_frames)?;
+        TimelineEngine::add_clips_batch(project, &self.media_ids, self.start_frame, self.target_track_id.clone(), self.push, self.image_duration_frames, self.push_direction.clone())?;
         Ok(())
     }
 
@@ -785,5 +791,71 @@ impl Command for SetProjectSubtitlesCommand {
     }
 
     fn name(&self) -> &str { "Edit Subtitles" }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+
+// ------------------------------------------------------------------
+// GENERIC TRACKS OVERWRITE COMMAND
+// ------------------------------------------------------------------
+pub struct SetProjectTracksCommand {
+    new_tracks: Vec<Track>,
+    old_tracks: Option<Vec<Track>>,
+}
+
+impl SetProjectTracksCommand {
+    pub fn new(new_tracks: Vec<Track>) -> Self {
+        Self { new_tracks, old_tracks: None }
+    }
+}
+
+impl Command for SetProjectTracksCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        self.old_tracks = Some(project.tracks.clone());
+        project.tracks = self.new_tracks.clone();
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let Some(old) = &self.old_tracks {
+            project.tracks = old.clone();
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Edit Tracks" }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+
+// ------------------------------------------------------------------
+// GENERIC WHOLE PROJECT OVERWRITE COMMAND
+// ------------------------------------------------------------------
+pub struct SetProjectStateCommand {
+    new_project: Box<Project>,
+    old_project: Option<Box<Project>>,
+}
+
+impl SetProjectStateCommand {
+    pub fn new(new_project: Project) -> Self {
+        Self { new_project: Box::new(new_project), old_project: None }
+    }
+}
+
+impl Command for SetProjectStateCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        self.old_project = Some(Box::new(project.clone()));
+        *project = *self.new_project.clone();
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let Some(old) = &self.old_project {
+            *project = *old.clone();
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Edit Project State" }
     fn as_any(&self) -> &dyn Any { self }
 }

@@ -33,7 +33,7 @@ pub fn push_left_minimal(clips: &mut Vec<Clip>, before_start_exclusive: u64, max
     clips.sort_by_key(|c| c.start_frame);
     let mut cursor = max_end_allowed;
     for c in clips.iter_mut().rev() {
-        if c.start_frame >= before_start_exclusive {
+        if c.start_frame > before_start_exclusive {
             continue;
         }
         let end = c.start_frame + c.duration_frames;
