@@ -435,3 +435,308 @@ impl Command for TrimClipCommand {
         false
     }
 }
+
+// ------------------------------------------------------------------
+// BATCH AND COMPLEX OPERATIONS
+// ------------------------------------------------------------------
+use crate::core::timeline::MoveClipItem;
+use crate::core::project::{TrackType, Transform};
+
+pub struct AddClipsBatchCommand {
+    media_ids: Vec<String>,
+    start_frame: u64,
+    target_track_id: Option<String>,
+    push: bool,
+    image_duration_frames: Option<u64>,
+    tracks_snapshot: Option<Vec<Track>>,
+}
+
+impl AddClipsBatchCommand {
+    pub fn new(media_ids: Vec<String>, start_frame: u64, target_track_id: Option<String>, push: bool, image_duration_frames: Option<u64>) -> Self {
+        Self { media_ids, start_frame, target_track_id, push, image_duration_frames, tracks_snapshot: None }
+    }
+}
+
+impl Command for AddClipsBatchCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        self.tracks_snapshot = Some(project.tracks.clone());
+        TimelineEngine::add_clips_batch(project, &self.media_ids, self.start_frame, self.target_track_id.clone(), self.push, self.image_duration_frames)?;
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let Some(snap) = &self.tracks_snapshot {
+            project.tracks = snap.clone();
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Add Clips Batch" }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+pub struct MoveClipsBatchCommand {
+    moves: Vec<MoveClipItem>,
+    push: bool,
+    gapless: bool,
+    tracks_snapshot: Option<Vec<Track>>,
+}
+
+impl MoveClipsBatchCommand {
+    pub fn new(moves: Vec<MoveClipItem>, push: bool, gapless: bool) -> Self {
+        Self { moves, push, gapless, tracks_snapshot: None }
+    }
+}
+
+impl Command for MoveClipsBatchCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        self.tracks_snapshot = Some(project.tracks.clone());
+        TimelineEngine::move_clips_batch(project, &self.moves, self.push, self.gapless)?;
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let Some(snap) = &self.tracks_snapshot {
+            project.tracks = snap.clone();
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Move Clips Batch" }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+pub struct SplitAndTrimCommand {
+    clip_id: String,
+    split_frame: u64,
+    is_left: bool,
+    gapless: bool,
+    tracks_snapshot: Option<Vec<Track>>,
+}
+
+impl SplitAndTrimCommand {
+    pub fn new(clip_id: String, split_frame: u64, is_left: bool, gapless: bool) -> Self {
+        Self { clip_id, split_frame, is_left, gapless, tracks_snapshot: None }
+    }
+}
+
+impl Command for SplitAndTrimCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        self.tracks_snapshot = Some(project.tracks.clone());
+        TimelineEngine::split_and_trim(project, &self.clip_id, self.split_frame, self.is_left, self.gapless)?;
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let Some(snap) = &self.tracks_snapshot {
+            project.tracks = snap.clone();
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Ripple Cut" }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+pub struct SplitAtPlayheadCommand {
+    split_frame: u64,
+    split_all: bool,
+    selected_clip_ids: Vec<String>,
+    tracks_snapshot: Option<Vec<Track>>,
+}
+
+impl SplitAtPlayheadCommand {
+    pub fn new(split_frame: u64, split_all: bool, selected_clip_ids: Vec<String>) -> Self {
+        Self { split_frame, split_all, selected_clip_ids, tracks_snapshot: None }
+    }
+}
+
+impl Command for SplitAtPlayheadCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        self.tracks_snapshot = Some(project.tracks.clone());
+        TimelineEngine::split_at_playhead(project, self.split_frame, self.split_all, &self.selected_clip_ids)?;
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let Some(snap) = &self.tracks_snapshot {
+            project.tracks = snap.clone();
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Split at Playhead" }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+pub struct SplitAndTrimAtPlayheadCommand {
+    split_frame: u64,
+    is_left: bool,
+    gapless: bool,
+    split_all: bool,
+    selected_clip_ids: Vec<String>,
+    tracks_snapshot: Option<Vec<Track>>,
+}
+
+impl SplitAndTrimAtPlayheadCommand {
+    pub fn new(split_frame: u64, is_left: bool, gapless: bool, split_all: bool, selected_clip_ids: Vec<String>) -> Self {
+        Self { split_frame, is_left, gapless, split_all, selected_clip_ids, tracks_snapshot: None }
+    }
+}
+
+impl Command for SplitAndTrimAtPlayheadCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        self.tracks_snapshot = Some(project.tracks.clone());
+        TimelineEngine::split_and_trim_at_playhead(project, self.split_frame, self.is_left, self.gapless, self.split_all, &self.selected_clip_ids)?;
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let Some(snap) = &self.tracks_snapshot {
+            project.tracks = snap.clone();
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Ripple Cut at Playhead" }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+pub struct CompactMainTracksCommand {
+    tracks_snapshot: Option<Vec<Track>>,
+}
+
+impl CompactMainTracksCommand {
+    pub fn new() -> Self {
+        Self { tracks_snapshot: None }
+    }
+}
+
+impl Command for CompactMainTracksCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        self.tracks_snapshot = Some(project.tracks.clone());
+        TimelineEngine::compact_main_tracks(project)?;
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let Some(snap) = &self.tracks_snapshot {
+            project.tracks = snap.clone();
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Compact Tracks" }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+pub struct AddTrackCommand {
+    track_type: TrackType,
+    near_track_id: Option<String>,
+    inserted_track_id: Option<String>,
+}
+
+impl AddTrackCommand {
+    pub fn new(track_type: TrackType, near_track_id: Option<String>) -> Self {
+        Self { track_type, near_track_id, inserted_track_id: None }
+    }
+}
+
+impl Command for AddTrackCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        let near = self.near_track_id.as_deref();
+        let track = TimelineEngine::add_track(project, self.track_type.clone(), near)?;
+        self.inserted_track_id = Some(track.id);
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let Some(id) = &self.inserted_track_id {
+            project.tracks.retain(|t| t.id != *id);
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Add Track" }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+pub struct AddFilterTrackCommand {
+    near_track_id: Option<String>,
+    inserted_track_id: Option<String>,
+}
+
+impl AddFilterTrackCommand {
+    pub fn new(near_track_id: Option<String>) -> Self {
+        Self { near_track_id, inserted_track_id: None }
+    }
+}
+
+impl Command for AddFilterTrackCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        let near = self.near_track_id.as_deref();
+        let track = TimelineEngine::add_filter_track(project, near)?;
+        self.inserted_track_id = Some(track.id);
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let Some(id) = &self.inserted_track_id {
+            project.tracks.retain(|t| t.id != *id);
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Add Filter Track" }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+pub struct UpdateClipTransformCommand {
+    clip_id: String,
+    new_transform: Transform,
+    old_transform: Option<Transform>,
+}
+
+impl UpdateClipTransformCommand {
+    pub fn new(clip_id: String, new_transform: Transform) -> Self {
+        Self { clip_id, new_transform, old_transform: None }
+    }
+}
+
+impl Command for UpdateClipTransformCommand {
+    fn execute(&mut self, project: &mut Project) -> AppResult<()> {
+        for t in &mut project.tracks {
+            if let Some(c) = t.clips.iter_mut().find(|c| c.id == self.clip_id) {
+                self.old_transform = Some(c.transform.clone());
+                c.transform = self.new_transform.clone();
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn undo(&mut self, project: &mut Project) -> AppResult<()> {
+        if let Some(old) = &self.old_transform {
+            for t in &mut project.tracks {
+                if let Some(c) = t.clips.iter_mut().find(|c| c.id == self.clip_id) {
+                    c.transform = old.clone();
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str { "Change Transform" }
+    fn as_any(&self) -> &dyn Any { self }
+
+    fn merge(&mut self, other: &dyn Command) -> bool {
+        if let Some(other_cmd) = other.as_any().downcast_ref::<UpdateClipTransformCommand>() {
+            if self.clip_id == other_cmd.clip_id {
+                self.new_transform = other_cmd.new_transform.clone();
+                return true;
+            }
+        }
+        false
+    }
+}
