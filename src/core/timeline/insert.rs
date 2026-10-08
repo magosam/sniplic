@@ -2,7 +2,7 @@ use crate::core::project::{AudioSettings, Clip, MediaType, Project, TrackType, T
 use crate::error::{AppError, AppResult};
 use super::gapless;
 use super::movement::truncate::truncate_overlapping_clips;
-use super::ripple::push_right_minimal;
+use super::ripple::{push_left_minimal, push_right_minimal};
 use super::tracks::TrackOperations;
 use uuid::Uuid;
 
@@ -49,17 +49,11 @@ impl InsertOperations {
             media.duration_frames
         };
         if push && is_main {
-            // Clip(s) that started before the insertion point but extended
-            // into it: the insertion "cuts" and pushes that piece to after
-            // the new clip only on the MAIN track.
-            for c in track.clips.iter_mut() {
-                if c.start_frame < start_frame && c.start_frame + c.duration_frames > start_frame {
-                    c.start_frame = start_frame + dur;
-                }
-            }
             // Push the rest (start_frame >= start_frame) the MINIMUM
             // required not to overlap the new clip. Extra tracks are free and never yield space.
             push_right_minimal(&mut track.clips, start_frame, start_frame + dur);
+            // Push left to allow bi-directional ripple push when swapping from the right
+            push_left_minimal(&mut track.clips, start_frame, start_frame);
         } else {
             // "a media item is never added on top of another while the underlying one remains the same size.
             // the obscured part is always lost, as if deleted."
