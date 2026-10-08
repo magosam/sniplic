@@ -1,4 +1,4 @@
-use crate::core::project::{Project, Track, Clip};
+use crate::core::project::{Project, Track};
 use crate::error::AppResult;
 use crate::core::timeline::TimelineEngine;
 use std::any::Any;
@@ -223,9 +223,7 @@ impl Command for SetClipVolumeCommand {
     fn execute(&mut self, project: &mut Project) -> AppResult<()> {
         for t in &mut project.tracks {
             if let Some(c) = t.clips.iter_mut().find(|c| c.id == self.clip_id) {
-                if let Some(audio) = &mut c.audio {
-                    audio.volume = self.new_volume;
-                }
+                c.audio.volume = self.new_volume;
             }
         }
         Ok(())
@@ -234,9 +232,7 @@ impl Command for SetClipVolumeCommand {
     fn undo(&mut self, project: &mut Project) -> AppResult<()> {
         for t in &mut project.tracks {
             if let Some(c) = t.clips.iter_mut().find(|c| c.id == self.clip_id) {
-                if let Some(audio) = &mut c.audio {
-                    audio.volume = self.old_volume;
-                }
+                c.audio.volume = self.old_volume;
             }
         }
         Ok(())
