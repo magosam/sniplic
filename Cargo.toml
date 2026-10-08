@@ -1,6 +1,6 @@
 [package]
 name = "sniplic-core"
-version = "0.2.370"
+version = "0.2.371"
 edition = "2021"
 authors = ["PromptCommando"]
 description = "A Rust-based Non-Linear Video Editing (NLE) engine."

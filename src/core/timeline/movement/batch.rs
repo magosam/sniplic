@@ -145,8 +145,23 @@ pub fn move_clips_batch(
             };
 
             let is_main = gapless::track_allows_gapless(project, &target_track_id);
-            if let Some(target) = project.tracks.iter_mut().find(|t| t.id == target_track_id) {
-                if push && is_main {
+            
+            // If gapless is disabled OR it's not the main track, we must NOT push.
+            // Instead of truncating (overwriting), we find an available track above it (CapCut behavior).
+            let actual_target_id = if push && gapless_enabled && is_main {
+                target_track_id.clone()
+            } else {
+                TrackOperations::find_or_create_available_track(
+                    project,
+                    &target_track_id,
+                    mv.new_start_frame,
+                    clip.duration_frames,
+                    &moving_ids,
+                )?
+            };
+
+            if let Some(target) = project.tracks.iter_mut().find(|t| t.id == actual_target_id) {
+                if push && gapless_enabled && is_main {
                     if mv.push_direction.as_deref() == Some("left") {
                         push_left_minimal(&mut target.clips, mv.new_start_frame, mv.new_start_frame);
                         push_right_minimal(&mut target.clips, mv.new_start_frame, mv.new_start_frame + clip.duration_frames);
@@ -154,13 +169,6 @@ pub fn move_clips_batch(
                         push_right_minimal(&mut target.clips, mv.new_start_frame, mv.new_start_frame + clip.duration_frames);
                         push_left_minimal(&mut target.clips, mv.new_start_frame, mv.new_start_frame);
                     }
-                } else {
-                    truncate_overlapping_clips_ignoring(
-                        target,
-                        mv.new_start_frame,
-                        clip.duration_frames,
-                        &moving_ids,
-                    );
                 }
                 target.clips.push(clip);
                 target.clips.sort_by_key(|c| c.start_frame);

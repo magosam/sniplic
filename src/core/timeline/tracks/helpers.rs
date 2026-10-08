@@ -42,3 +42,49 @@ pub fn main_audio_track_id(project: &Project) -> Option<String> {
         .find(|t| t.track_type == TrackType::Audio)
         .map(|t| t.id.clone())
 }
+
+/// Finds the track or creates a new one visually "above" it that has no overlapping clips
+/// for the given time range. For Video tracks, "above" means lower index. For Audio tracks,
+/// "above" means higher index.
+pub fn find_or_create_available_track(
+    project: &mut Project,
+    start_track_id: &str,
+    start_frame: u64,
+    dur: u64,
+    ignore_ids: &[String],
+) -> AppResult<String> {
+    let start_idx = project.tracks.iter().position(|t| t.id == start_track_id)
+        .ok_or_else(|| AppError::InvalidOperation("Track not found".to_string()))?;
+    let track_type = project.tracks[start_idx].track_type.clone();
+    let is_v = track_type == TrackType::Video;
+
+    let mut current_idx = start_idx;
+    let mut last_checked_id = start_track_id.to_string();
+
+    loop {
+        let has_overlap = project.tracks[current_idx].clips.iter().any(|c| {
+            !ignore_ids.contains(&c.id) && 
+            start_frame < c.start_frame + c.duration_frames && 
+            start_frame + dur > c.start_frame
+        });
+
+        if !has_overlap {
+            return Ok(project.tracks[current_idx].id.clone());
+        }
+
+        if is_v {
+            if current_idx == 0 || project.tracks[current_idx - 1].track_type != track_type {
+                let new_track = super::management::add_track(project, track_type, Some(&last_checked_id))?;
+                return Ok(new_track.id);
+            }
+            current_idx -= 1;
+        } else {
+            if current_idx + 1 == project.tracks.len() || project.tracks[current_idx + 1].track_type != track_type {
+                let new_track = super::management::add_track(project, track_type, Some(&last_checked_id))?;
+                return Ok(new_track.id);
+            }
+            current_idx += 1;
+        }
+        last_checked_id = project.tracks[current_idx].id.clone();
+    }
+}

@@ -43,6 +43,17 @@ impl TrackOperations {
     }
 
     #[inline]
+    pub fn find_or_create_available_track(
+        project: &mut Project,
+        start_track_id: &str,
+        start_frame: u64,
+        dur: u64,
+        ignore_ids: &[String],
+    ) -> AppResult<String> {
+        helpers::find_or_create_available_track(project, start_track_id, start_frame, dur, ignore_ids)
+    }
+
+    #[inline]
     pub fn compact_track(track: &mut Track) {
         compact::compact_track(track)
     }

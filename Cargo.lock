@@ -1188,7 +1188,7 @@ checksum = "f9395f0f0eee849a9b707b2f06bb92a6a422090e2123bb2ef8e87a0e61892a8e"
 
 [[package]]
 name = "sniplic-core"
-version = "0.2.363"
+version = "0.2.371"
 dependencies = [
  "aes-gcm",
  "ed25519-dalek",
@@ -1205,7 +1205,7 @@ dependencies = [
 
 [[package]]
 name = "sniplic-node"
-version = "0.2.351"
+version = "0.2.371"
 dependencies = [
  "napi",
  "napi-build",

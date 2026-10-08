@@ -1,7 +1,7 @@
 use crate::core::project::{AudioSettings, Clip, MediaType, Project, TrackType, Transform};
 use crate::error::{AppError, AppResult};
 use super::gapless;
-use super::movement::truncate::truncate_overlapping_clips;
+
 use super::ripple::{push_left_minimal, push_right_minimal};
 use super::tracks::TrackOperations;
 use uuid::Uuid;
@@ -19,14 +19,17 @@ impl InsertOperations {
         push_direction: Option<String>,
     ) -> AppResult<Clip> {
         let is_main = gapless::track_allows_gapless(project, track_id);
-        let media = project.media_pool.get(media_id)
-            .ok_or_else(|| AppError::InvalidOperation("Media not found".to_string()))?;
+        let (media_type, media_name, media_dur) = {
+            let media = project.media_pool.get(media_id)
+                .ok_or_else(|| AppError::InvalidOperation("Media not found".to_string()))?;
+            (media.media_type.clone(), media.name.clone(), media.duration_frames)
+        };
 
-        let track = project.tracks.iter_mut().find(|t| t.id == track_id)
+        let track = project.tracks.iter().find(|t| t.id == track_id)
             .ok_or_else(|| AppError::InvalidOperation("Track not found".to_string()))?;
 
-        if (track.track_type == TrackType::Video && media.media_type == MediaType::Audio)
-            || (track.track_type == TrackType::Audio && media.media_type != MediaType::Audio) {
+        if (track.track_type == TrackType::Video && media_type == MediaType::Audio)
+            || (track.track_type == TrackType::Audio && media_type != MediaType::Audio) {
             return Err(AppError::InvalidOperation("Media type incompatible with track".to_string()));
         }
 
@@ -34,7 +37,7 @@ impl InsertOperations {
             return Err(AppError::InvalidOperation(format!("Track '{}' is locked", track.name)));
         }
 
-        let dur = if media.media_type == MediaType::Image {
+        let dur = if media_type == MediaType::Image {
             image_duration_frames
                 .filter(|&f| f > 0)
                 .unwrap_or_else(|| {
@@ -47,8 +50,23 @@ impl InsertOperations {
                     (sec * fps).round() as u64
                 })
         } else {
-            media.duration_frames
+            media_dur
         };
+        let actual_target_id = if push && is_main {
+            track_id.to_string()
+        } else {
+            TrackOperations::find_or_create_available_track(
+                project,
+                track_id,
+                start_frame,
+                dur,
+                &[], // No clips to ignore during insertion
+            )?
+        };
+
+        // We re-borrow the track because actual_target_id might point to a new one
+        let track = project.tracks.iter_mut().find(|t| t.id == actual_target_id).unwrap();
+
         if push && is_main {
             if push_direction.as_deref() == Some("left") {
                 // If explicitly swapping to the left, push left FIRST so it owns the mathematical tiebreaker
@@ -59,16 +77,12 @@ impl InsertOperations {
                 push_right_minimal(&mut track.clips, start_frame, start_frame + dur);
                 push_left_minimal(&mut track.clips, start_frame, start_frame);
             }
-        } else {
-            // "a media item is never added on top of another while the underlying one remains the same size.
-            // the obscured part is always lost, as if deleted."
-            truncate_overlapping_clips(track, start_frame, dur, "");
         }
 
         let new_clip = Clip {
             id: format!("clp_{}", Uuid::new_v4().simple()),
             media_id: media_id.to_string(),
-            name: media.name.clone(),
+            name: media_name,
             start_frame,
             duration_frames: dur,
             in_point_frames: 0,
